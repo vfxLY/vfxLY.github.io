@@ -154,7 +154,7 @@
                                     <input 
                                         type="text" 
                                         id="ag_serverUrl" 
-                                        value="http://17610400098.top" 
+                                        value="https://17610400098.top" 
                                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition"
                                     >
                                 </div>
@@ -285,7 +285,7 @@
                                     <label for="ie_serverUrl" class="block text-sm font-medium text-gray-700 mb-1">服务器地址</label>
                                     <input type="text" id="ie_serverUrl" 
                                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                                        placeholder="http://17610400098.top" value="http://17610400098.top">
+                                        placeholder="https://17610400098.top" value="https://17610400098.top">
                                 </div>
 
                                 <div>
@@ -405,8 +405,8 @@
                                             type="text" 
                                             id="sdxl_serverUrl" 
                                             class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sdxl_primary focus:border-sdxl_primary transition-all"
-                                            placeholder="http://17610400098.top"
-                                            value="http://17610400098.top"
+                                            placeholder="https://17610400098.top"
+                                            value="https://17610400098.top"
                                         >
                                     </div>
                                 </div>
@@ -648,7 +648,8 @@
                 generateBtn.addEventListener('click', async () => {
                     resetState();
                     
-                    const serverUrl = serverUrlInput.value.trim();
+                    let serverUrl = serverUrlInput.value.trim();
+                    serverUrl = ensureHttps(serverUrl);
                     const prompt = promptInput.value.trim();
                     const width = parseInt(widthInput.value);
                     const height = parseInt(heightInput.value);
@@ -826,6 +827,16 @@
                     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
                 }
 
+                // 确保 URL 使用 HTTPS（如果当前页面是 HTTPS）
+                function ensureHttps(url) {
+                    if (!url) return url;
+                    // 如果当前页面是 HTTPS，且 URL 是 HTTP，自动转换为 HTTPS
+                    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+                        return url.replace('http://', 'https://');
+                    }
+                    return url;
+                }
+
                 function showProgress(percent, text = '生成中...', consoleLogs = '') {
                     progressContainer.classList.remove('hidden');
                     progressBar.style.width = `${percent}%`;
@@ -988,7 +999,7 @@
                 }
 
                 async function startGeneration() {
-                    currentServerUrl = serverUrlInput.value.trim();
+                    currentServerUrl = ensureHttps(serverUrlInput.value.trim());
                     currentPrompt = promptInput.value.trim();
 
                     if (!currentServerUrl) { showError('请输入服务器地址'); return; }
@@ -1166,6 +1177,16 @@
                     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
                 }
 
+                // 确保 URL 使用 HTTPS（如果当前页面是 HTTPS）
+                function ensureHttps(url) {
+                    if (!url) return url;
+                    // 如果当前页面是 HTTPS，且 URL 是 HTTP，自动转换为 HTTPS
+                    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+                        return url.replace('http://', 'https://');
+                    }
+                    return url;
+                }
+
                 function showProgress() {
                     progressContainer.classList.remove('hidden');
                     progressBar.style.width = '0%';
@@ -1273,7 +1294,7 @@
 
                 // 生成图像
                 generateBtn.addEventListener('click', async () => {
-                    const serverUrl = serverUrlInput.value.trim();
+                    let serverUrl = ensureHttps(serverUrlInput.value.trim());
                     const positivePrompt = positivePromptInput.value.trim();
                     const negativePrompt = negativePromptInput.value.trim();
                     const width = parseInt(widthInput.value);
@@ -1405,6 +1426,16 @@
 
                 function generateClientId() {
                     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                }
+
+                // 确保 URL 使用 HTTPS（如果当前页面是 HTTPS）
+                function ensureHttps(url) {
+                    if (!url) return url;
+                    // 如果当前页面是 HTTPS，且 URL 是 HTTP，自动转换为 HTTPS
+                    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+                        return url.replace('http://', 'https://');
+                    }
+                    return url;
                 }
 
                 function showLoading() {
