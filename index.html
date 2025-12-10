@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI 图像生成</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#007AFF', // 苹果蓝
+                        secondary: '#34C759', // 苹果绿
+                        sdxl_primary: '#5856D6', // 苹果紫
+                        sdxl_dark: '#1D1D1F',
+                        sdxl_light: '#F5F5F7',
+                        neutral: '#1D1D1F',
+                        light: '#F5F5F7',
+                        appleGray: '#86868B',
+                        appleDark: '#1D1D1F'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        /* 苹果风格样式 */
+        @layer base {
+            * {
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+            body {
+                background: linear-gradient(135deg, #F5F5F7 0%, #FFFFFF 100%);
+                min-height: 100vh;
+            }
+        }
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .progress-bar {
+                transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+                backdrop-filter: blur(20px);
+            }
+            .card-shadow:hover {
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+                transform: translateY(-2px);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .apple-button {
+                background: linear-gradient(180deg, #007AFF 0%, #0051D5 100%);
+                box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .apple-button:hover {
+                background: linear-gradient(180deg, #0051D5 0%, #003D9E 100%);
+                box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
+                transform: translateY(-1px);
+            }
+            .apple-button:active {
+                transform: translateY(0);
+                box-shadow: 0 1px 4px rgba(0, 122, 255, 0.3);
+            }
+            .drop-area-active {
+                border-color: #007AFF;
+                background-color: rgba(0, 122, 255, 0.05);
+            }
+            .sdxl-gradient-bg {
+                background: linear-gradient(135deg, #5856D6 0%, #34C759 100%);
+            }
+            .sdxl-card-shadow {
+                box-shadow: 0 4px 20px rgba(88, 86, 214, 0.12), 0 1px 3px rgba(88, 86, 214, 0.08);
+            }
+            .sdxl-card-shadow:hover {
+                box-shadow: 0 8px 30px rgba(88, 86, 214, 0.18), 0 2px 6px rgba(88, 86, 214, 0.12);
+            }
+            .sdxl-accent-primary {
+                accent-color: #5856D6;
+            }
+            .apple-input {
+                background: rgba(255, 255, 255, 0.8);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .apple-input:focus {
+                background: rgba(255, 255, 255, 0.95);
+                border-color: #007AFF;
+                box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+                outline: none;
+            }
+            .glass-effect {
+                background: rgba(255, 255, 255, 0.7);
+                backdrop-filter: blur(20px) saturate(180%);
+                -webkit-backdrop-filter: blur(20px) saturate(180%);
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-12 max-w-7xl">
+        <header class="mb-12 text-center">
+            <h1 class="text-[clamp(2rem,5vw,3rem)] font-semibold text-appleDark mb-3 tracking-tight">ComfyUI 图像生成</h1>
+            <p class="text-appleGray text-lg">创造无限可能</p>
+        </header>
+
+        <div class="mb-8">
+            <ul class="flex flex-wrap justify-center gap-2 text-sm font-medium" id="toolTabs" role="tablist">
+                <li role="presentation">
+                    <button id="tab-advanced-generate" data-tab-target="advanced-generate" type="button" role="tab" aria-controls="advanced-generate" aria-selected="true"
+                        class="inline-block px-6 py-3 rounded-full text-white bg-primary hover:bg-primary/90 transition-all duration-300 shadow-lg hover:shadow-xl">
+                        <i class="fa fa-magic mr-2"></i> 高级图像生成
+                    </button>
+                </li>
+                <li role="presentation">
+                    <button id="tab-image-edit" data-tab-target="image-edit" type="button" role="tab" aria-controls="image-edit" aria-selected="false"
+                        class="inline-block px-6 py-3 rounded-full text-appleDark bg-white hover:bg-gray-50 transition-all duration-300 shadow-sm hover:shadow-md border border-gray-200">
+                        <i class="fa fa-pencil-square-o mr-2"></i> 图片修改
+                    </button>
+                </li>
+                <li role="presentation">
+                    <button id="tab-sdxl-generate" data-tab-target="sdxl-generate" type="button" role="tab" aria-controls="sdxl-generate" aria-selected="false"
+                        class="inline-block px-6 py-3 rounded-full text-appleDark bg-white hover:bg-gray-50 transition-all duration-300 shadow-sm hover:shadow-md border border-gray-200">
+                        <i class="fa fa-photo mr-2"></i> SDXL 快速生成
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div id="toolContents">
+            <div id="advanced-generate" role="tabpanel" aria-labelledby="tab-advanced-generate" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1">
+                        <div class="glass-effect rounded-2xl p-8 card-shadow">
+                            <h2 class="text-2xl font-semibold mb-6 text-appleDark flex items-center">
+                                <i class="fa fa-sliders mr-3 text-primary"></i> 生成设置
+                            </h2>
+                            
+                            <div class="space-y-6">
+                                <div class="hidden">
+                                    <label for="ag_serverUrl" class="block text-sm font-medium text-gray-700 mb-1">服务器地址</label>
+                                    <input 
+                                        type="text" 
+                                        id="ag_serverUrl" 
+                                        value="http://17610400098.top" 
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label for="ag_prompt" class="block text-sm font-medium text-appleDark mb-2">提示词</label>
+                                    <textarea 
+                                        id="ag_prompt" 
+                                        rows="10" 
+                                        placeholder="输入描述文本..." 
+                                        class="w-full px-4 py-3 apple-input rounded-xl resize-none"
+                                    >在金庸《神雕侠侣》原著剧情中，古墓派传人小龙女被点中穴道而全身瘫软无力，双眼蒙以白布，她躺在简陋的客栈木床上，姿势侧卧蜷缩，乌黑的长发散乱披覆在肩头和枕边，宛如一朵凋零的白莲，肌肤如凝脂般细腻苍白，脸庞精致绝美却带着无助的茫然与惊恐，樱唇微张似欲呼喊却发不出声，身上那袭标志性的纯白纱裙轻薄贴身，裙摆微微掀起露出修长玉腿，裙领松散滑落肩头显露出锁骨与半边香肩，胸前曲线玲珑起伏却被薄纱勉强遮掩，乳峰隐约轮廓分明而乳晕与乳头完全被衣料覆盖，未露一丝春光，下身私处亦被裙裾严实裹住无任何暴露，她的手臂无力垂落床沿，指尖微颤显示内心的挣扎与羞愤；尹志平身为全真教道士，身着青色道袍，腰系玄色腰带，头裹道巾，面容英俊有三缕长须，扭曲成兽欲横行的淫笑，他跪伏在床榻边，一手粗暴按住小龙女纤细腰肢固定其身躯，另一手在抚摸她的阴部，粗鲁地分开她无力并拢的双腿，动作充满原始的侵犯与亵渎，整个场景置于昏黄烛光摇曳的古风客栈内室，木质屏风后隐约可见江湖刀剑痕迹，空气中弥漫着淡淡药香与尘土气息，低角度仰视构图强调小龙女的无助脆弱与尹志平的俯身压迫，烛火从左侧投下柔和暖光，在她白裙与肌肤上拉出长影，营造出压抑而悲剧性的氛围，画面以写实水墨风格渲染，细腻笔触勾勒人物衣纹与表情微妙变化，墨色晕染增强情感张力，整体构图遵循三等分法则，将小龙女置于黄金分割点突出其纯洁遭玷污的凄美悲情。
+
+照片的左上角有"REDQ+ WAN"的精美艺术字水印</textarea>
+                                </div>
+
+                                <div class="flex items-center justify-between glass-effect p-4 rounded-xl border border-gray-200/50">
+                                    <div class="flex flex-col">
+                                        <span class="text-sm font-medium text-appleDark">启用 卡通LoRA</span>
+                                        <span class="text-xs text-appleGray mt-0.5">使用预设的模型微调风格</span>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="ag_enableLora" class="sr-only peer" checked>
+                                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                    </label>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="ag_width" class="block text-sm font-medium text-appleDark mb-2">宽度: <span id="ag_widthValue" class="text-primary font-semibold">1280</span></label>
+                                        <input 
+                                            type="range" 
+                                            id="ag_width" 
+                                            min="512" 
+                                            max="4096" 
+                                            step="64" 
+                                            value="1280" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                                        >
+                                    </div>
+                                    <div>
+                                        <label for="ag_height" class="block text-sm font-medium text-appleDark mb-2">高度: <span id="ag_heightValue" class="text-primary font-semibold">720</span></label>
+                                        <input 
+                                            type="range" 
+                                            id="ag_height" 
+                                            min="512" 
+                                            max="4096" 
+                                            step="64" 
+                                            value="720" 
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                                        >
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="ag_steps" class="block text-sm font-medium text-appleDark mb-2">生成步数: <span id="ag_stepsValue" class="text-primary font-semibold">10</span></label>
+                                    <input 
+                                        type="range" 
+                                        id="ag_steps" 
+                                        min="1" 
+                                        max="50" 
+                                        step="1" 
+                                        value="10" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
+                                    >
+                                </div>
+
+                                <button 
+                                    id="ag_generateBtn" 
+                                    class="w-full apple-button text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-2 text-base"
+                                >
+                                    <i class="fa fa-magic"></i>
+                                    <span>生成图像</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="glass-effect rounded-2xl p-8 h-full card-shadow">
+                            <h2 class="text-2xl font-semibold mb-6 text-appleDark flex items-center">
+                                <i class="fa fa-image mr-3 text-primary"></i> 生成结果
+                            </h2>
+                            
+                            <div id="ag_progressContainer" class="mb-4 hidden">
+                                <div class="text-sm text-gray-600 mb-1 flex justify-between">
+                                    <span id="ag_progressText">生成中...</span>
+                                    <span id="ag_progressPercent">0%</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="ag_progressBar" class="progress-bar h-full bg-secondary w-0"></div>
+                                </div>
+                                <div id="ag_consoleProgress" class="text-xs text-gray-500 mt-1 hidden">
+                                    <i class="fa fa-terminal mr-1"></i>
+                                    <span id="ag_consoleProgressText"></span>
+                                </div>
+                            </div>
+                            
+                            <div id="ag_errorContainer" class="mb-4 hidden p-4 bg-red-50 border border-red-200 rounded-lg">
+                                <div class="flex items-start">
+                                    <i class="fa fa-exclamation-circle text-red-500 mt-0.5 mr-3"></i>
+                                    <p id="ag_errorMessage" class="text-red-700 text-sm"></p>
+                                </div>
+                            </div>
+                            
+                            <div id="ag_imageContainer" class="flex items-center justify-center min-h-[600px] border-2 border-dashed border-gray-300/50 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50 to-white">
+                                <div id="ag_placeholder" class="text-center text-appleGray p-6">
+                                    <i class="fa fa-picture-o text-6xl mb-4 opacity-40"></i>
+                                    <p class="text-lg">点击生成按钮开始创建图像</p>
+                                </div>
+                                <img id="ag_resultImage" src="" alt="生成的图像" class="max-w-full max-h-[600px] hidden rounded-xl shadow-2xl">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="image-edit" role="tabpanel" aria-labelledby="tab-image-edit" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1">
+                        <div class="glass-effect rounded-2xl p-8 card-shadow">
+                            <h2 class="text-2xl font-semibold mb-6 flex items-center text-appleDark">
+                                <i class="fa fa-sliders text-primary mr-3"></i> 生成设置
+                            </h2>
+                            
+                            <div class="space-y-6">
+                                <div class="hidden">
+                                    <label for="ie_serverUrl" class="block text-sm font-medium text-gray-700 mb-1">服务器地址</label>
+                                    <input type="text" id="ie_serverUrl" 
+                                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                                        placeholder="http://17610400098.top" value="http://17610400098.top">
+                                </div>
+
+                                <div>
+                                    <label for="ie_prompt" class="block text-sm font-medium text-appleDark mb-2">提示词</label>
+                                    <textarea id="ie_prompt" rows="3" 
+                                        class="w-full px-4 py-3 apple-input rounded-xl resize-none"
+                                        placeholder="输入修改指令...">修改姿势敞开衣服露出诱人的胸部 穿着黑丝内衣</textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-appleDark mb-2">上传图片</label>
+                                    <div id="ie_dropArea" class="border-2 border-dashed border-gray-300/50 rounded-xl p-6 text-center hover:bg-gray-50/50 transition cursor-pointer glass-effect">
+                                        <input type="file" id="ie_imageUpload" accept="image/*" class="hidden">
+                                        <label for="ie_imageUpload" class="cursor-pointer">
+                                            <div id="ie_uploadPrompt" class="py-4">
+                                                <i class="fa fa-cloud-upload text-appleGray text-3xl mb-3"></i>
+                                                <p class="text-sm text-appleGray">点击或拖拽图片到此处上传</p>
+                                            </div>
+                                            <div id="ie_imagePreviewContainer" class="hidden w-full h-48 overflow-hidden rounded-xl">
+                                                <img id="ie_imagePreview" src="" alt="预览图" class="w-full h-full object-contain rounded-xl">
+                                            </div>
+                                        </label>
+                                    </div>
+                                    <p id="ie_imageName" class="text-xs text-appleGray mt-2 hidden"></p>
+                                </div>
+
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <label for="ie_steps" class="block text-sm font-medium text-gray-700">生成步数</label>
+                                        <span id="ie_stepsValue" class="text-sm text-gray-500">20</span>
+                                    </div>
+                                    <input type="range" id="ie_steps" min="10" max="100" step="5" value="20" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                    <p class="text-xs text-gray-500 mt-1">更多步数可能获得更好效果，但耗时更长</p>
+                                </div>
+
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <label for="ie_cfg" class="block text-sm font-medium text-gray-700">CFG 系数</label>
+                                        <span id="ie_cfgValue" class="text-sm text-gray-500">2.5</span>
+                                    </div>
+                                    <input type="range" id="ie_cfg" min="0.5" max="10" step="0.5" value="2.5" 
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary">
+                                    <p class="text-xs text-gray-500 mt-1">控制提示词对生成结果的影响程度</p>
+                                </div>
+
+                                <button id="ie_generateBtn" 
+                                    class="w-full apple-button text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center text-base">
+                                    <i class="fa fa-magic mr-2"></i> 生成图片
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="glass-effect rounded-2xl p-8 card-shadow h-full flex flex-col">
+                            <h2 class="text-2xl font-semibold mb-6 flex items-center text-appleDark">
+                                <i class="fa fa-image text-primary mr-3"></i> 生成结果
+                            </h2>
+                            
+                            <div id="ie_progressContainer" class="mb-4 hidden">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span>生成进度</span>
+                                    <span id="ie_progressPercentage">0%</span>
+                                </div>
+                                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div id="ie_progressBar" class="progress-bar h-full bg-secondary w-0"></div>
+                                </div>
+                                <p id="ie_progressText" class="text-xs text-gray-500 mt-1">准备开始...</p>
+                            </div>
+
+                            <div id="ie_errorContainer" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg hidden">
+                                <div class="flex">
+                                    <i class="fa fa-exclamation-circle text-red-500 mt-0.5 mr-2"></i>
+                                    <p id="ie_errorMessage" class="text-sm text-red-700"></p>
+                                </div>
+                            </div>
+
+                            <div id="ie_imageContainer" class="flex-grow flex flex-col items-center justify-center border-2 border-dashed border-gray-300/50 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-50 to-white">
+                                <div id="ie_emptyState" class="text-center p-8">
+                                    <i class="fa fa-picture-o text-appleGray text-6xl mb-4 opacity-40"></i>
+                                    <p class="text-appleGray text-lg">生成的图片将显示在这里</p>
+                                    <p class="text-xs text-appleGray mt-2 opacity-70">请上传图片并点击生成按钮</p>
+                                </div>
+                                <img id="ie_resultImage" src="" alt="生成结果" class="max-w-full max-h-full object-contain hidden rounded-xl shadow-2xl">
+                            </div>
+
+                            <div id="ie_imageActions" class="mt-6 flex justify-center gap-3 hidden">
+                                <button id="ie_downloadBtn" class="bg-white hover:bg-gray-50 text-appleDark font-medium py-3 px-6 rounded-xl transition flex items-center shadow-sm hover:shadow-md border border-gray-200">
+                                    <i class="fa fa-download mr-2"></i> 下载
+                                </button>
+                                <button id="ie_newGenerateBtn" class="apple-button text-white font-semibold py-3 px-6 rounded-xl flex items-center">
+                                    <i class="fa fa-refresh mr-2"></i> 重新生成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sdxl-generate" role="tabpanel" aria-labelledby="tab-sdxl-generate" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1">
+                        <div class="glass-effect rounded-2xl p-8 sdxl-card-shadow">
+                            <h2 class="text-2xl font-semibold mb-6 text-appleDark flex items-center">
+                                <i class="fa fa-sliders mr-3 text-sdxl_primary"></i>生成设置
+                            </h2>
+                            
+                            <div class="space-y-6">
+                                <div class="hidden">
+                                    <label for="sdxl_serverUrl" class="block text-sm font-medium text-gray-700 mb-1">服务器地址</label>
+                                    <div class="relative">
+                                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                            <i class="fa fa-server"></i>
+                                        </span>
+                                        <input 
+                                            type="text" 
+                                            id="sdxl_serverUrl" 
+                                            class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sdxl_primary focus:border-sdxl_primary transition-all"
+                                            placeholder="http://17610400098.top"
+                                            value="http://17610400098.top"
+                                        >
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="sdxl_positivePrompt" class="block text-sm font-medium text-appleDark mb-2">正向提示词</label>
+                                    <textarea 
+                                        id="sdxl_positivePrompt" 
+                                        rows="4" 
+                                        class="w-full px-4 py-3 apple-input rounded-xl resize-none"
+                                        placeholder="输入描述性提示词..."
+                                    >the best quality, the best resolution, masterpiece, Sharp image)
+(realistic skin, sweat, detailed skin pore)
+1girl, 18 yo, solo, long hair, looking at viewer, smile, brown hair, thighhighs, very small ass, skinny body, heart, indoors, artist name, hood, sleeves past wrists, lips, pillow, hoodie, bed, no panties, on bed, bottomless, hood down, all fours, freckles, nose, top-down bottom-up, white thighhighs, white hoodie</textarea>
+                                </div>
+
+                                <div>
+                                    <label for="sdxl_negativePrompt" class="block text-sm font-medium text-appleDark mb-2">反向提示词</label>
+                                    <textarea 
+                                        id="sdxl_negativePrompt" 
+                                        rows="3" 
+                                        class="w-full px-4 py-3 apple-input rounded-xl resize-none"
+                                        placeholder="输入需要避免的特征..."
+                                    >bad quality,worst quality,worst detail,sketch,censor, extra limbs, deformed fingers, bad anatomy, mutated body, lowres, worst quality, low quality, low score, bad score, blurry, text, ugly, hooded eyes, watermark, pale, bad hands, bad anatomy, bad proportions, poorly drawn face, poorly drawn hand, missing finger, extra limbs, blurry, pixelated, distorted, lowres, jpeg artifacts, watermark, signature, text, (deformed:1.5), (bad hand:1.3), overexposed, underexposed, censored, mutated, extra finger, cloned face, bad eyes,</textarea>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="sdxl_width" class="block text-sm font-medium text-appleDark mb-2">宽度 <span id="sdxl_widthValue" class="text-sdxl_primary font-semibold">1280</span></label>
+                                        <input 
+                                            type="range" 
+                                            id="sdxl_width" 
+                                            min="512" 
+                                            max="2048" 
+                                            step="64" 
+                                            value="1080"
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer sdxl-accent-primary"
+                                        >
+                                    </div>
+                                    <div>
+                                        <label for="sdxl_height" class="block text-sm font-medium text-appleDark mb-2">高度 <span id="sdxl_heightValue" class="text-sdxl_primary font-semibold">720</span></label>
+                                        <input 
+                                            type="range" 
+                                            id="sdxl_height" 
+                                            min="512" 
+                                            max="2048" 
+                                            step="64" 
+                                            value="720"
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer sdxl-accent-primary"
+                                        >
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="sdxl_steps" class="block text-sm font-medium text-appleDark mb-2">生成步数 <span id="sdxl_stepsValue" class="text-sdxl_primary font-semibold">10</span></label>
+                                    <input 
+                                        type="range" 
+                                        id="sdxl_steps" 
+                                        min="10" 
+                                        max="100" 
+                                        step="1" 
+                                        value="10"
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer sdxl-accent-primary"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label for="sdxl_cfg" class="block text-sm font-medium text-appleDark mb-2">CFG 比例 <span id="sdxl_cfgValue" class="text-sdxl_primary font-semibold">2.5</span></label>
+                                    <input 
+                                        type="range" 
+                                        id="sdxl_cfg" 
+                                        min="1" 
+                                        max="30" 
+                                        step="0.5" 
+                                        value="2.5"
+                                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer sdxl-accent-primary"
+                                    >
+                                </div>
+
+                                <button 
+                                    id="sdxl_generateBtn" 
+                                    class="w-full text-white font-semibold py-4 px-6 rounded-xl transition-all flex items-center justify-center text-base"
+                                    style="background: linear-gradient(180deg, #5856D6 0%, #3D3BB8 100%); box-shadow: 0 2px 8px rgba(88, 86, 214, 0.3);"
+                                    onmouseover="this.style.background='linear-gradient(180deg, #3D3BB8 0%, #2A2880 100%)'; this.style.boxShadow='0 4px 12px rgba(88, 86, 214, 0.4)';"
+                                    onmouseout="this.style.background='linear-gradient(180deg, #5856D6 0%, #3D3BB8 100%)'; this.style.boxShadow='0 2px 8px rgba(88, 86, 214, 0.3)';"
+                                >
+                                    <i class="fa fa-magic mr-2"></i> 生成图像
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="glass-effect rounded-2xl p-8 sdxl-card-shadow h-full flex flex-col">
+                            <h2 class="text-2xl font-semibold mb-6 text-appleDark flex items-center">
+                                <i class="fa fa-image mr-3 text-sdxl_primary"></i>生成结果
+                            </h2>
+                            
+                            <div id="sdxl_statusContainer" class="mb-6 py-8 flex flex-col items-center justify-center text-center">
+                                <div id="sdxl_idleState" class="block">
+                                    <i class="fa fa-picture-o text-6xl text-appleGray mb-4 opacity-40"></i>
+                                    <p class="text-appleGray text-lg">点击生成按钮开始创建图像</p>
+                                </div>
+                                
+                                <div id="sdxl_loadingState" class="hidden">
+                                    <div class="animate-spin rounded-full h-14 w-14 border-t-3 border-b-3 border-sdxl_primary mb-4"></div>
+                                    <p class="text-appleDark mb-3 text-lg font-medium">正在生成图像...</p>
+                                    <div class="w-full max-w-md bg-gray-200 rounded-full h-3 mt-2 overflow-hidden">
+                                        <div id="sdxl_progressBar" class="bg-sdxl_primary h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                    </div>
+                                    <p id="sdxl_progressText" class="text-sm text-appleGray mt-3">进度: 0%</p>
+                                </div>
+                                
+                                <div id="sdxl_errorState" class="hidden text-red-500">
+                                    <i class="fa fa-exclamation-circle text-6xl mb-4"></i>
+                                    <p id="sdxl_errorMessage" class="text-lg">发生错误，请检查服务器地址</p>
+                                </div>
+                            </div>
+                            
+                            <div id="sdxl_imageContainer" class="flex-grow flex items-center justify-center border-2 border-dashed border-gray-300/50 rounded-2xl bg-gradient-to-br from-gray-50 to-white min-h-[500px]">
+                                <img id="sdxl_resultImage" src="" alt="生成的图像将显示在这里" class="max-w-full max-h-[500px] rounded-xl shadow-2xl hidden">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-16 text-center text-appleGray text-sm">
+            <p>ComfyUI 图像生成 | 设计与开发</p>
+        </footer>
+    </div>
+
+    <div id="imageModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 hidden">
+        <div class="relative w-full h-full flex items-center justify-center">
+            <button id="modalClose" class="absolute top-4 right-4 text-white text-3xl leading-none px-3 py-1 rounded-full hover:bg-white/20">&times;</button>
+            <img id="modalImage" src="" alt="放大预览" class="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl border border-white/20">
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Tab 切换逻辑 ---
+            const tabs = document.querySelectorAll('#toolTabs button');
+            const contents = document.querySelectorAll('.tab-content');
+            const modal = document.getElementById('imageModal');
+            const modalImage = document.getElementById('modalImage');
+            const modalClose = document.getElementById('modalClose');
+
+            function openModal(src) {
+                modalImage.src = src;
+                modal.classList.remove('hidden');
+            }
+
+            function closeModal() {
+                modal.classList.add('hidden');
+                modalImage.src = '';
+            }
+
+            function bindImageZoom(img) {
+                if (!img) return;
+                img.addEventListener('dblclick', () => {
+                    if (!img.src) return;
+                    openModal(img.src);
+                });
+            }
+
+            modalClose.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
+
+            [
+                document.getElementById('ag_resultImage'),
+                document.getElementById('ie_resultImage'),
+                document.getElementById('sdxl_resultImage')
+            ].forEach(bindImageZoom);
+
+            function switchTab(targetId) {
+                tabs.forEach(tab => {
+                    const isActive = tab.dataset.tabTarget === targetId;
+                    tab.setAttribute('aria-selected', isActive);
+                    if (isActive) {
+                        tab.className = 'inline-block px-6 py-3 rounded-full text-white bg-primary hover:bg-primary/90 transition-all duration-300 shadow-lg hover:shadow-xl';
+                    } else {
+                        tab.className = 'inline-block px-6 py-3 rounded-full text-appleDark bg-white hover:bg-gray-50 transition-all duration-300 shadow-sm hover:shadow-md border border-gray-200';
+                    }
+                });
+
+                contents.forEach(content => {
+                    content.classList.toggle('hidden', content.id !== targetId);
+                });
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    switchTab(e.currentTarget.dataset.tabTarget);
+                });
+            });
+
+            // 初始化显示第一个 Tab
+            switchTab('advanced-generate');
+            
+            // --- 1. 高级图像生成 (Flux/AuraFlow) 逻辑 ---
+            (function() {
+                const prefix = 'ag_';
+                const serverUrlInput = document.getElementById(prefix + 'serverUrl');
+                const promptInput = document.getElementById(prefix + 'prompt');
+                const enableLoraInput = document.getElementById(prefix + 'enableLora');
+                const widthInput = document.getElementById(prefix + 'width');
+                const heightInput = document.getElementById(prefix + 'height');
+                const stepsInput = document.getElementById(prefix + 'steps');
+                const widthValue = document.getElementById(prefix + 'widthValue');
+                const heightValue = document.getElementById(prefix + 'heightValue');
+                const stepsValue = document.getElementById(prefix + 'stepsValue');
+                const generateBtn = document.getElementById(prefix + 'generateBtn');
+                const progressContainer = document.getElementById(prefix + 'progressContainer');
+                const progressBar = document.getElementById(prefix + 'progressBar');
+                const progressPercent = document.getElementById(prefix + 'progressPercent');
+                const progressText = document.getElementById(prefix + 'progressText');
+                const consoleProgress = document.getElementById(prefix + 'consoleProgress');
+                const consoleProgressText = document.getElementById(prefix + 'consoleProgressText');
+                const errorContainer = document.getElementById(prefix + 'errorContainer');
+                const errorMessage = document.getElementById(prefix + 'errorMessage');
+                const placeholder = document.getElementById(prefix + 'placeholder');
+                const resultImage = document.getElementById(prefix + 'resultImage');
+
+                let progressInterval = null;
+                let fakeProgressInterval = null;
+                let currentPromptId = null;
+                let totalSteps = 0;
+                let fakeProgress = 0;
+
+                // 更新滑块显示值
+                widthInput.addEventListener('input', () => { widthValue.textContent = widthInput.value; });
+                heightInput.addEventListener('input', () => { heightValue.textContent = heightInput.value; });
+                stepsInput.addEventListener('input', () => { stepsValue.textContent = stepsInput.value; });
+
+                // 生成图像
+                generateBtn.addEventListener('click', async () => {
+                    resetState();
+                    
+                    const serverUrl = serverUrlInput.value.trim();
+                    const prompt = promptInput.value.trim();
+                    const width = parseInt(widthInput.value);
+                    const height = parseInt(heightInput.value);
+                    totalSteps = parseInt(stepsInput.value);
+                    const useLora = enableLoraInput.checked;
+                    
+                    if (!serverUrl) { showError('请输入服务器地址'); return; }
+                    if (!prompt) { showError('请输入提示词'); return; }
+                    
+                    // 禁用按钮并显示加载状态
+                    setButtonLoading(true);
+                    
+                    try {
+                        showProgress(0, '提交任务中...');
+                        const workflow = createWorkflow(prompt, width, height, totalSteps, useLora);
+                        const clientId = generateClientId();
+                        const response = await fetch(`${serverUrl}/prompt`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: workflow, client_id: clientId })
+                        });
+                        
+                        if (!response.ok) { throw new Error(`服务器响应错误: ${response.statusText}`); }
+                        
+                        const data = await response.json();
+                        currentPromptId = data.prompt_id;
+                        
+                        if (!currentPromptId) { throw new Error('未获取到任务ID'); }
+                        
+                        await pollProgressWithConsoleParse(serverUrl, currentPromptId);
+                        
+                    } catch (error) {
+                        showError(error.message);
+                        hideProgress();
+                        clearInterval(progressInterval);
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                    } finally {
+                        // 恢复按钮状态
+                        setButtonLoading(false);
+                    }
+                });
+
+                function createWorkflow(prompt, width, height, steps, useLora) {
+                    const modelSource = useLora ? ["52", 0] : ["48", 0];
+                    const clipSource = useLora ? ["52", 1] : ["39", 0];
+
+                    const workflow = {
+                        "9": { "inputs": { "filename_prefix": "z-image", "images": ["43", 0] }, "class_type": "SaveImage", "_meta": { "title": "保存图像" } },
+                        "39": { "inputs": { "clip_name": "zImage_textEncoder.safetensors", "type": "lumina2", "device": "default" }, "class_type": "CLIPLoader", "_meta": { "title": "加载CLIP" } },
+                        "40": { "inputs": { "vae_name": "zImage_vae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
+                        "41": { "inputs": { "width": width, "height": height, "batch_size": 1 }, "class_type": "EmptySD3LatentImage", "_meta": { "title": "空Latent图像（SD3）" } },
+                        "42": { "inputs": { "conditioning": ["45", 0] }, "class_type": "ConditioningZeroOut", "_meta": { "title": "条件零化" } },
+                        "43": { "inputs": { "samples": ["44", 0], "vae": ["40", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
+                        "44": { "inputs": { "seed": Math.floor(Math.random() * 1000000000000000), "steps": steps, "cfg": 1, "sampler_name": "res_multistep", "scheduler": "simple", "denoise": 1, "model": ["47", 0], "positive": ["45", 0], "negative": ["42", 0], "latent_image": ["41", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器" } },
+                        "45": { "inputs": { "text": prompt + "\n", "clip": clipSource }, "class_type": "CLIPTextEncode", "_meta": { "title": "CLIP文本编码" } },
+                        "47": { "inputs": { "shift": 3, "model": modelSource }, "class_type": "ModelSamplingAuraFlow", "_meta": { "title": "采样算法（AuraFlow）" } },
+                        "48": { "inputs": { "unet_name": "zImage_turbo.safetensors", "weight_dtype": "default" }, "class_type": "UNETLoader", "_meta": { "title": "UNet加载器" } }
+                    };
+
+                    if (useLora) {
+                        workflow["52"] = { "inputs": { "lora_name": "z-image-illustria-01.safetensors", "strength_model": 0.7, "strength_clip": 1, "model": ["48", 0], "clip": ["39", 0] }, "class_type": "LoraLoader", "_meta": { "title": "加载LoRA" } };
+                    }
+                    return workflow;
+                }
+
+                async function pollProgressWithConsoleParse(serverUrl, promptId) {
+                    return new Promise((resolve, reject) => {
+                        if (progressInterval) clearInterval(progressInterval);
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                        
+                        // 启动假的进度条
+                        fakeProgress = 0;
+                        fakeProgressInterval = setInterval(() => {
+                            fakeProgress += Math.random() * 3 + 1; // 每次增加1-4%
+                            if (fakeProgress > 90) fakeProgress = 90; // 最多到90%
+                            showProgress(fakeProgress, '生成中...', '');
+                        }, 500);
+                        
+                        let lastParsedProgress = -1;
+                        
+                        progressInterval = setInterval(async () => {
+                            try {
+                                const historyResponse = await fetch(`${serverUrl}/history/${promptId}`);
+                                if (!historyResponse.ok) throw new Error(`获取历史失败: ${historyResponse.statusText}`);
+                                
+                                const history = await historyResponse.json();
+                                const taskData = history[promptId];
+                                
+                                if (taskData && taskData.outputs) {
+                                    clearInterval(progressInterval);
+                                    if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                    showProgress(100, '生成完成，加载图片中...');
+                                    
+                                    const imageNode = taskData.outputs["9"];
+                                    if (imageNode && imageNode.images && imageNode.images.length > 0) {
+                                        const imageData = imageNode.images[0];
+                                        const imageUrl = `${serverUrl}/view?filename=${imageData.filename}&subfolder=${imageData.subfolder}&type=${imageData.type}`;
+                                        showImage(imageUrl);
+                                        resolve();
+                                    } else {
+                                        throw new Error("未找到生成的图像");
+                                    }
+                                    return;
+                                }
+
+                                try {
+                                    const logsResponse = await fetch(`${serverUrl}/logs?prompt_id=${promptId}`);
+                                    if (logsResponse.ok) {
+                                        const logs = await logsResponse.text();
+                                        if (logs) {
+                                            const parsedProgress = parseConsoleProgress(logs);
+                                            if (parsedProgress > lastParsedProgress) {
+                                                lastParsedProgress = parsedProgress;
+                                                if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                                showProgress(parsedProgress, `采样中 (${Math.round(parsedProgress/100*totalSteps)}/${totalSteps}步)`, logs );
+                                            } else if (lastParsedProgress === -1 && fakeProgress > 0) {
+                                                // 如果还没有真实进度，继续使用假的进度，但限制显示
+                                                showProgress(Math.min(fakeProgress, 90), `生成中...`, '');
+                                            }
+                                        }
+                                    }
+                                } catch (logError) {
+                                    if (lastParsedProgress === -1) {
+                                        const fallbackProgress = calculateFallbackProgress(taskData, totalSteps);
+                                        if (fallbackProgress > 0) {
+                                            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                            showProgress(fallbackProgress, `生成中 (估算进度)`);
+                                        } else if (fakeProgress > 0) {
+                                            showProgress(Math.min(fakeProgress, 90), `生成中...`, '');
+                                        }
+                                    }
+                                }
+
+                            } catch (error) {
+                                clearInterval(progressInterval);
+                                if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                reject(error);
+                            }
+                        }, 500); 
+                    });
+                }
+
+                function parseConsoleProgress(consoleText) {
+                    const percentRegex = /(\d+)%\|[█ ]+\| \d+\/\d+/;
+                    const stepRegex = /(\d+)\/(\d+)\s+\[.+\]/;
+                    
+                    const percentMatch = consoleText.match(percentRegex);
+                    if (percentMatch && percentMatch[1]) {
+                        return parseInt(percentMatch[1]);
+                    }
+                    
+                    const stepMatch = consoleText.match(stepRegex);
+                    if (stepMatch && stepMatch[1] && stepMatch[2]) {
+                        const currentStep = parseInt(stepMatch[1]);
+                        const totalStep = parseInt(stepMatch[2]);
+                        return Math.floor((currentStep / totalStep) * 100);
+                    }
+                    
+                    if (consoleText.includes('MB usable') && consoleText.includes('MB loaded')) {
+                        return 5; 
+                    }
+                    
+                    return -1;
+                }
+
+                function calculateFallbackProgress(taskData, totalSteps) {
+                    if (!taskData || !taskData.node_states) return 0;
+                    const completedNodes = Object.keys(taskData.node_states).length;
+                    const totalNodes = Object.keys(taskData.prompt || {}).length;
+                    const nodeProgress = Math.floor((completedNodes / totalNodes) * 70);
+                    return Math.min(nodeProgress + 10, 90);
+                }
+
+                function generateClientId() {
+                    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                }
+
+                function showProgress(percent, text = '生成中...', consoleLogs = '') {
+                    progressContainer.classList.remove('hidden');
+                    progressBar.style.width = `${percent}%`;
+                    progressPercent.textContent = `${Math.round(percent)}%`;
+                    progressText.textContent = text;
+                    
+                    if (consoleLogs) {
+                        const lines = consoleLogs.split('\n');
+                        for (let i = lines.length - 1; i >= 0; i--) {
+                            const line = lines[i].trim();
+                            if (line.includes('%|') || line.includes('/') && line.includes('[')) {
+                                consoleProgressText.textContent = line;
+                                consoleProgress.classList.remove('hidden');
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                function hideProgress() {
+                    progressContainer.classList.add('hidden');
+                    consoleProgress.classList.add('hidden');
+                }
+
+                function showError(message) {
+                    errorMessage.textContent = message;
+                    errorContainer.classList.remove('hidden');
+                }
+
+                function hideError() {
+                    errorContainer.classList.add('hidden');
+                }
+
+                function showImage(url) {
+                    placeholder.classList.add('hidden');
+                    resultImage.src = url;
+                    resultImage.classList.remove('hidden');
+                    setTimeout(() => { hideProgress(); }, 1000);
+                }
+
+                function resetState() {
+                    hideError();
+                    placeholder.classList.remove('hidden');
+                    resultImage.classList.add('hidden');
+                    resultImage.src = '';
+                    clearInterval(progressInterval);
+                    if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                    currentPromptId = null;
+                    lastParsedProgress = -1;
+                    fakeProgress = 0;
+                }
+
+                function setButtonLoading(loading) {
+                    if (loading) {
+                        generateBtn.disabled = true;
+                        generateBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i><span>生成中...</span>';
+                        generateBtn.style.cursor = 'not-allowed';
+                        generateBtn.style.opacity = '0.7';
+                    } else {
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = '<i class="fa fa-magic"></i><span>生成图像</span>';
+                        generateBtn.style.cursor = 'pointer';
+                        generateBtn.style.opacity = '1';
+                    }
+                }
+            })();
+
+            // --- 2. 图片修改 (Qwen) 逻辑 ---
+            (function() {
+                const prefix = 'ie_';
+                const serverUrlInput = document.getElementById(prefix + 'serverUrl');
+                const promptInput = document.getElementById(prefix + 'prompt');
+                const imageUpload = document.getElementById(prefix + 'imageUpload');
+                const imageName = document.getElementById(prefix + 'imageName');
+                const stepsInput = document.getElementById(prefix + 'steps');
+                const stepsValue = document.getElementById(prefix + 'stepsValue');
+                const cfgInput = document.getElementById(prefix + 'cfg');
+                const cfgValue = document.getElementById(prefix + 'cfgValue');
+                const generateBtn = document.getElementById(prefix + 'generateBtn');
+                const newGenerateBtn = document.getElementById(prefix + 'newGenerateBtn');
+                const downloadBtn = document.getElementById(prefix + 'downloadBtn');
+                const progressContainer = document.getElementById(prefix + 'progressContainer');
+                const progressBar = document.getElementById(prefix + 'progressBar');
+                const progressPercentage = document.getElementById(prefix + 'progressPercentage');
+                const progressText = document.getElementById(prefix + 'progressText');
+                const errorContainer = document.getElementById(prefix + 'errorContainer');
+                const errorMessage = document.getElementById(prefix + 'errorMessage');
+                const emptyState = document.getElementById(prefix + 'emptyState');
+                const resultImage = document.getElementById(prefix + 'resultImage');
+                const imageActions = document.getElementById(prefix + 'imageActions');
+                const dropArea = document.getElementById(prefix + 'dropArea');
+                const uploadPrompt = document.getElementById(prefix + 'uploadPrompt');
+                const imagePreviewContainer = document.getElementById(prefix + 'imagePreviewContainer');
+                const imagePreview = document.getElementById(prefix + 'imagePreview');
+
+                let uploadedImage = null;
+                let currentServerUrl = '';
+                let currentPrompt = '';
+                let currentSteps = 20;
+                let currentCfg = 2.5;
+                let isGenerating = false;
+                let fakeProgressInterval = null;
+                let fakeProgress = 0;
+
+                // 事件监听
+                stepsInput.addEventListener('input', (e) => {
+                    currentSteps = parseInt(e.target.value);
+                    stepsValue.textContent = currentSteps;
+                });
+                cfgInput.addEventListener('input', (e) => {
+                    currentCfg = parseFloat(e.target.value);
+                    cfgValue.textContent = currentCfg;
+                });
+                imageUpload.addEventListener('change', (e) => {
+                    if (e.target.files && e.target.files[0]) {
+                        handleImageFile(e.target.files[0]);
+                    }
+                });
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, preventDefaults, false);
+                });
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, () => { dropArea.classList.add('drop-area-active'); }, false);
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropArea.addEventListener(eventName, () => { dropArea.classList.remove('drop-area-active'); }, false);
+                });
+                dropArea.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    const file = dt.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        handleImageFile(file);
+                    }
+                }, false);
+                generateBtn.addEventListener('click', startGeneration);
+                newGenerateBtn.addEventListener('click', startGeneration);
+                downloadBtn.addEventListener('click', downloadImage);
+
+                function preventDefaults(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                function handleImageFile(file) {
+                    if (!file.type.startsWith('image/')) {
+                        showError('请上传有效的图片文件');
+                        return;
+                    }
+                    uploadedImage = file;
+                    imageName.textContent = `已上传: ${file.name}`;
+                    imageName.classList.remove('hidden');
+                    
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        imagePreview.src = event.target.result;
+                        uploadPrompt.classList.add('hidden');
+                        imagePreviewContainer.classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+
+                async function startGeneration() {
+                    currentServerUrl = serverUrlInput.value.trim();
+                    currentPrompt = promptInput.value.trim();
+
+                    if (!currentServerUrl) { showError('请输入服务器地址'); return; }
+                    if (!currentPrompt) { showError('请输入提示词'); return; }
+                    if (!uploadedImage) { showError('请上传图片'); return; }
+
+                    hideError();
+                    showProgress();
+                    hideImage();
+                    disableControls(true);
+                    
+                    // 重置假的进度
+                    if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                    fakeProgress = 0;
+
+                    try {
+                        progressText.textContent = '正在上传图片...';
+                        updateProgress(5);
+                        const imageFilename = await uploadImage();
+                        if (!imageFilename) { throw new Error('图片上传失败'); }
+                        
+                        progressText.textContent = '正在准备提示词...';
+                        updateProgress(10);
+                        progressText.textContent = '正在提交生成任务...';
+                        updateProgress(15);
+                        const { promptId, clientId } = await submitPrompt(imageFilename);
+                        
+                        progressText.textContent = '正在生成图片...';
+                        updateProgress(20);
+                        const result = await pollResult(promptId, clientId);
+                        
+                        if (result && result.images && result.images.length > 0) {
+                            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                            showImage(result.images[0].url);
+                            progressText.textContent = '生成完成!';
+                            updateProgress(100);
+                        } else {
+                            throw new Error('未获取到生成结果');
+                        }
+                    } catch (error) {
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                        showError(error.message || '生成过程中发生错误');
+                    } finally {
+                        disableControls(false);
+                        if (!errorContainer.classList.contains('hidden')) {
+                            setTimeout(() => { hideProgress(); }, 5000);
+                        }
+                    }
+                }
+
+                async function uploadImage() {
+                    try {
+                        const formData = new FormData();
+                        formData.append('image', uploadedImage);
+
+                        const response = await fetch(`${currentServerUrl}/upload/image`, { method: 'POST', body: formData });
+                        if (!response.ok) { throw new Error(`上传失败: ${response.statusText}`); }
+
+                        const data = await response.json();
+                        return data.name;
+                    } catch (error) {
+                        console.error('图片上传错误:', error);
+                        throw error;
+                    }
+                }
+
+                async function submitPrompt(imageFilename) {
+                    try {
+                        const prompt = {
+                            "3": { "inputs": { "seed": Math.floor(Math.random() * 100000000000000), "steps": currentSteps, "cfg": currentCfg, "sampler_name": "euler", "scheduler": "simple", "denoise": 1, "model": ["75", 0], "positive": ["111", 0], "negative": ["110", 0], "latent_image": ["88", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器" } },
+                            "8": { "inputs": { "samples": ["3", 0], "vae": ["39", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
+                            "37": { "inputs": { "unet_name": "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "weight_dtype": "default" }, "class_type": "UNETLoader", "_meta": { "title": "UNet加载器" } },
+                            "38": { "inputs": { "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image", "device": "default" }, "class_type": "CLIPLoader", "_meta": { "title": "加载CLIP" } },
+                            "39": { "inputs": { "vae_name": "qwen_image_vae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
+                            "66": { "inputs": { "shift": 3, "model": ["447", 0] }, "class_type": "ModelSamplingAuraFlow", "_meta": { "title": "采样算法（AuraFlow）" } },
+                            "75": { "inputs": { "strength": 1, "model": ["66", 0] }, "class_type": "CFGNorm", "_meta": { "title": "CFG归一化" } },
+                            "78": { "inputs": { "image": imageFilename }, "class_type": "LoadImage", "_meta": { "title": "加载图像" } },
+                            "88": { "inputs": { "pixels": ["390", 0], "vae": ["39", 0] }, "class_type": "VAEEncode", "_meta": { "title": "VAE编码" } },
+                            "89": { "inputs": { "lora_name": "Qwen\\qwen-image_nsfw_adv_v1.0.safetensors", "strength_model": 0.5, "model": ["37", 0] }, "class_type": "LoraLoaderModelOnly", "_meta": { "title": "LoRA加载器（仅模型）" } },
+                            "110": { "inputs": { "prompt": "", "clip": ["38", 0], "vae": ["39", 0], "image1": ["390", 0] }, "class_type": "TextEncodeQwenImageEditPlus", "_meta": { "title": "TextEncodeQwenImageEditPlus" } },
+                            "111": { "inputs": { "prompt": currentPrompt, "clip": ["38", 0], "vae": ["39", 0], "image1": ["390", 0] }, "class_type": "TextEncodeQwenImageEditPlus", "_meta": { "title": "TextEncodeQwenImageEditPlus" } },
+                            "390": { "inputs": { "image": ["78", 0], "shift": 3 }, "class_type": "FluxKontextImageScale", "_meta": { "title": "FluxKontextImageScale" } },
+                            "446": { "inputs": { "filename_prefix": "ComfyUI", "images": ["8", 0] }, "class_type": "SaveImage", "_meta": { "title": "保存图像" } },
+                            "447": { "inputs": { "lora_name": "Qwen\\Qwen_Snofs_1_2.safetensors", "strength_model": 0.5, "model": ["89", 0] }, "class_type": "LoraLoaderModelOnly", "_meta": { "title": "LoRA加载器（仅模型）" } }
+                        };
+
+                        const clientId = generateClientId();
+                        const response = await fetch(`${currentServerUrl}/prompt`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt, client_id: clientId })
+                        });
+
+                        if (!response.ok) { throw new Error(`提交任务失败: ${response.statusText}`); }
+
+                        const data = await response.json();
+                        return { promptId: data.prompt_id, clientId: clientId };
+                    } catch (error) {
+                        console.error('提交任务错误:', error);
+                        throw error;
+                    }
+                }
+
+                async function pollResult(promptId, clientId) {
+                    return new Promise((resolve, reject) => {
+                        // 启动假的进度条
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                        fakeProgress = 0;
+                        fakeProgressInterval = setInterval(() => {
+                            fakeProgress += Math.random() * 3 + 1; // 每次增加1-4%
+                            if (fakeProgress > 90) fakeProgress = 90; // 最多到90%
+                            updateProgress(fakeProgress);
+                        }, 500);
+                        
+                        const interval = setInterval(async () => {
+                            try {
+                                const response = await fetch(`${currentServerUrl}/history/${promptId}?client_id=${clientId}`);
+                                
+                                if (!response.ok) { throw new Error(`获取结果失败: ${response.statusText}`); }
+                                
+                                const history = await response.json();
+                                
+                                if (history[promptId]) {
+                                    if (history[promptId].status === 'error') {
+                                        clearInterval(interval);
+                                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                        reject(new Error(history[promptId].error || '生成过程中发生错误'));
+                                        return;
+                                    }
+                                    
+                                    const outputs = history[promptId].outputs;
+                                    for (const nodeId in outputs) {
+                                        if (outputs[nodeId].images) {
+                                            clearInterval(interval);
+                                            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                            resolve({
+                                                images: outputs[nodeId].images.map(img => ({
+                                                    url: `${currentServerUrl}/view?filename=${img.filename}&subfolder=${img.subfolder}&type=${img.type}`,
+                                                    filename: img.filename
+                                                }))
+                                            });
+                                            return;
+                                        }
+                                    }
+                                    
+                                    if (history[promptId].progress) {
+                                        const realProgress = Math.round(history[promptId].progress * 100);
+                                        if (realProgress > fakeProgress) {
+                                            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                            updateProgress(realProgress);
+                                        }
+                                    } else {
+                                        // 如果没有真实进度，使用假的进度
+                                        updateProgress(Math.min(fakeProgress, 90));
+                                    }
+                                } else {
+                                    // 如果还没有结果，继续使用假的进度
+                                    updateProgress(Math.min(fakeProgress, 90));
+                                }
+                            } catch (error) {
+                                clearInterval(interval);
+                                if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                reject(error);
+                            }
+                        }, 1000);
+                        setTimeout(() => {
+                            clearInterval(interval);
+                            if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                            reject(new Error('生成超时，请重试'));
+                        }, 5 * 60 * 1000);
+                    });
+                }
+
+                function generateClientId() {
+                    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                }
+
+                function showProgress() {
+                    progressContainer.classList.remove('hidden');
+                    progressBar.style.width = '0%';
+                    progressPercentage.textContent = '0%';
+                }
+
+                function hideProgress() {
+                    progressContainer.classList.add('hidden');
+                }
+
+                function updateProgress(percent) {
+                    progressBar.style.width = `${percent}%`;
+                    progressPercentage.textContent = `${Math.round(percent)}%`;
+                }
+
+                function showError(message) {
+                    errorMessage.textContent = message;
+                    errorContainer.classList.remove('hidden');
+                    hideProgress();
+                    hideImage();
+                }
+
+                function hideError() {
+                    errorContainer.classList.add('hidden');
+                }
+
+                function showImage(url) {
+                    resultImage.src = url;
+                    resultImage.classList.remove('hidden');
+                    emptyState.classList.add('hidden');
+                    imageActions.classList.remove('hidden');
+                }
+
+                function hideImage() {
+                    resultImage.src = '';
+                    resultImage.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    imageActions.classList.add('hidden');
+                }
+
+                function downloadImage() {
+                    if (resultImage.src) {
+                        const link = document.createElement('a');
+                        link.href = resultImage.src;
+                        link.download = `comfyui-generated-${new Date().getTime()}.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                }
+
+                function disableControls(disable) {
+                    isGenerating = disable;
+                    generateBtn.disabled = disable;
+                    newGenerateBtn.disabled = disable;
+                    serverUrlInput.disabled = disable;
+                    promptInput.disabled = disable;
+                    imageUpload.disabled = disable;
+                    stepsInput.disabled = disable;
+                    cfgInput.disabled = disable;
+
+                    if (disable) {
+                        generateBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 生成中...';
+                        generateBtn.style.cursor = 'not-allowed';
+                        generateBtn.style.opacity = '0.7';
+                    } else {
+                        generateBtn.innerHTML = '<i class="fa fa-magic mr-2"></i> 生成图片';
+                        generateBtn.style.cursor = 'pointer';
+                        generateBtn.style.opacity = '1';
+                    }
+                }
+            })();
+
+            // --- 3. SDXL 快速生成 逻辑 ---
+            (function() {
+                const prefix = 'sdxl_';
+                const serverUrlInput = document.getElementById(prefix + 'serverUrl');
+                const positivePromptInput = document.getElementById(prefix + 'positivePrompt');
+                const negativePromptInput = document.getElementById(prefix + 'negativePrompt');
+                const widthInput = document.getElementById(prefix + 'width');
+                const heightInput = document.getElementById(prefix + 'height');
+                const stepsInput = document.getElementById(prefix + 'steps');
+                const cfgInput = document.getElementById(prefix + 'cfg');
+                const widthValue = document.getElementById(prefix + 'widthValue');
+                const heightValue = document.getElementById(prefix + 'heightValue');
+                const stepsValue = document.getElementById(prefix + 'stepsValue');
+                const cfgValue = document.getElementById(prefix + 'cfgValue');
+                const generateBtn = document.getElementById(prefix + 'generateBtn');
+                const idleState = document.getElementById(prefix + 'idleState');
+                const loadingState = document.getElementById(prefix + 'loadingState');
+                const errorState = document.getElementById(prefix + 'errorState');
+                const errorMessage = document.getElementById(prefix + 'errorMessage');
+                const progressBar = document.getElementById(prefix + 'progressBar');
+                const progressText = document.getElementById(prefix + 'progressText');
+                const resultImage = document.getElementById(prefix + 'resultImage');
+
+                let fakeProgressInterval = null;
+                let fakeProgress = 0;
+
+                // 更新滑块显示值
+                widthInput.addEventListener('input', () => { widthValue.textContent = widthInput.value; });
+                heightInput.addEventListener('input', () => { heightValue.textContent = heightInput.value; });
+                stepsInput.addEventListener('input', () => { stepsValue.textContent = stepsInput.value; });
+                cfgInput.addEventListener('input', () => { cfgValue.textContent = cfgInput.value; });
+
+                // 生成图像
+                generateBtn.addEventListener('click', async () => {
+                    const serverUrl = serverUrlInput.value.trim();
+                    const positivePrompt = positivePromptInput.value.trim();
+                    const negativePrompt = negativePromptInput.value.trim();
+                    const width = parseInt(widthInput.value);
+                    const height = parseInt(heightInput.value);
+                    const steps = parseInt(stepsInput.value);
+                    const cfg = parseFloat(cfgInput.value);
+
+                    if (!serverUrl) { showError('请输入服务器地址'); return; }
+                    if (!positivePrompt) { showError('请输入正向提示词'); return; }
+
+                    // 禁用按钮并显示加载状态
+                    setButtonLoading(true);
+
+                    try {
+                        showLoading();
+                        
+                        const workflow = createWorkflow(positivePrompt, negativePrompt, width, height, steps, cfg);
+
+                        const clientId = generateClientId();
+                        const response = await fetch(`${serverUrl}/prompt`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: workflow, client_id: clientId })
+                        });
+
+                        if (!response.ok) { throw new Error(`服务器响应错误: ${response.statusText}`); }
+
+                        const data = await response.json();
+                        const promptId = data.prompt_id;
+
+                        await pollProgress(serverUrl, promptId, clientId);
+
+                    } catch (error) {
+                        console.error('生成图像时出错:', error);
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                        showError(error.message || '生成图像时发生错误，请重试');
+                    } finally {
+                        // 恢复按钮状态
+                        setButtonLoading(false);
+                    }
+                });
+
+                function createWorkflow(positivePrompt, negativePrompt, width, height, steps, cfg) {
+                    return {
+                        "5": { "inputs": { "width": width, "height": height, "batch_size": 1 }, "class_type": "EmptyLatentImage", "_meta": { "title": "空Latent图像" } },
+                        "7": { "inputs": { "text": negativePrompt, "clip": ["31", 1] }, "class_type": "CLIPTextEncode", "_meta": { "title": "CLIP文本编码" } },
+                        "8": { "inputs": { "samples": ["13", 0], "vae": ["20", 2] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
+                        "13": { "inputs": { "add_noise": true, "noise_seed": Math.floor(Math.random() * 1000000000000000), "cfg": cfg, "model": ["20", 0], "positive": ["51", 0], "negative": ["7", 0], "sampler": ["14", 0], "sigmas": ["29", 0], "latent_image": ["5", 0] }, "class_type": "SamplerCustom", "_meta": { "title": "自定义采样器" } },
+                        "14": { "inputs": { "sampler_name": "dpmpp_2m" }, "class_type": "KSamplerSelect", "_meta": { "title": "K采样器选择" } },
+                        "20": { "inputs": { "ckpt_name": "sdxl\\unholyDesireMixSinister_v70.safetensors" }, "class_type": "CheckpointLoaderSimple", "_meta": { "title": "Checkpoint加载器（简易）" } },
+                        "29": { "inputs": { "scheduler": "karras", "steps": steps, "denoise": 1, "model": ["31", 0] }, "class_type": "BasicScheduler", "_meta": { "title": "基本调度器" } },
+                        "31": { "inputs": { "lora_name": "sdxl_细节增加\\boring_SDXL_negative_LORA_AutismMix_v1.safetensors", "strength_model": 0.8, "strength_clip": 1, "model": ["20", 0], "clip": ["20", 1] }, "class_type": "LoraLoader", "_meta": { "title": "加载LoRA" } },
+                        "44": { "inputs": { "images": ["8", 0] }, "class_type": "PreviewImage", "_meta": { "title": "预览图像" } },
+                        "51": { "inputs": { "text": positivePrompt, "clip": ["31", 1] }, "class_type": "CLIPTextEncode", "_meta": { "title": "CLIP文本编码" } }
+                    };
+                }
+
+                async function pollProgress(serverUrl, promptId, clientId) {
+                    return new Promise((resolve, reject) => {
+                        // 启动假的进度条
+                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                        fakeProgress = 0;
+                        fakeProgressInterval = setInterval(() => {
+                            fakeProgress += Math.random() * 3 + 1; // 每次增加1-4%
+                            if (fakeProgress > 90) fakeProgress = 90; // 最多到90%
+                            updateProgress(fakeProgress);
+                        }, 500);
+                        
+                        const interval = setInterval(async () => {
+                            try {
+                                const response = await fetch(`${serverUrl}/history/${promptId}`);
+                                
+                                if (!response.ok) { throw new Error(`获取进度失败: ${response.statusText}`); }
+                                
+                                const history = await response.json();
+                                
+                                if (history[promptId]) {
+                                    const data = history[promptId];
+                                    
+                                    if (data.status?.error) {
+                                        clearInterval(interval);
+                                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                        reject(new Error(`生成错误: ${data.status.error}`));
+                                        return;
+                                    }
+                                    
+                                    const progress = data.progress || 0;
+                                    const realProgress = progress * 100;
+                                    
+                                    // 如果有真实进度且大于假进度，使用真实进度
+                                    if (realProgress > fakeProgress) {
+                                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                        updateProgress(realProgress);
+                                    } else {
+                                        // 否则继续使用假的进度
+                                        updateProgress(Math.min(fakeProgress, 90));
+                                    }
+                                    
+                                    if (data.status?.completed) {
+                                        clearInterval(interval);
+                                        if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                        
+                                        const nodeId = Object.keys(data.outputs).find(key => 
+                                            data.outputs[key].images?.length > 0
+                                        );
+                                        
+                                        if (nodeId && data.outputs[nodeId].images[0]) {
+                                            const imageData = data.outputs[nodeId].images[0];
+                                            const imageUrl = `${serverUrl}/view?filename=${imageData.filename}&subfolder=${imageData.subfolder}&type=${imageData.type}`;
+                                            
+                                            showImage(imageUrl);
+                                            resolve();
+                                        } else {
+                                            reject(new Error('未找到生成的图像'));
+                                        }
+                                    }
+                                } else {
+                                    // 如果还没有结果，继续使用假的进度
+                                    updateProgress(Math.min(fakeProgress, 90));
+                                }
+                            } catch (error) {
+                                clearInterval(interval);
+                                if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+                                reject(error);
+                            }
+                        }, 1000);
+                    });
+                }
+
+                function generateClientId() {
+                    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                }
+
+                function showLoading() {
+                    idleState.classList.add('hidden');
+                    errorState.classList.add('hidden');
+                    loadingState.classList.remove('hidden');
+                    resultImage.classList.add('hidden');
+                    fakeProgress = 0;
+                    updateProgress(0);
+                }
+
+                function showError(message) {
+                    idleState.classList.add('hidden');
+                    loadingState.classList.add('hidden');
+                    errorState.classList.remove('hidden');
+                    resultImage.classList.add('hidden');
+                    errorMessage.textContent = message;
+                }
+
+                function showImage(url) {
+                    idleState.classList.add('hidden');
+                    loadingState.classList.add('hidden');
+                    errorState.classList.add('hidden');
+                    
+                    const img = new Image();
+                    img.onload = () => {
+                        resultImage.src = url;
+                        resultImage.classList.remove('hidden');
+                    };
+                    img.onerror = () => {
+                        showError('无法加载生成的图像');
+                    };
+                    img.src = url;
+                }
+
+                function updateProgress(percent) {
+                    progressBar.style.width = `${percent}%`;
+                    progressText.textContent = `进度: ${Math.round(percent)}%`;
+                }
+
+                function setButtonLoading(loading) {
+                    if (loading) {
+                        generateBtn.disabled = true;
+                        generateBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 生成中...';
+                        generateBtn.style.cursor = 'not-allowed';
+                        generateBtn.style.opacity = '0.7';
+                    } else {
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = '<i class="fa fa-magic mr-2"></i> 生成图像';
+                        generateBtn.style.cursor = 'pointer';
+                        generateBtn.style.opacity = '1';
+                    }
+                }
+            })();
+        });
+    </script>
+</body>
+</html>
