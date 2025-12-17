@@ -139,6 +139,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   // Copy/Paste State
   const [clipboard, setClipboard] = useState<CanvasItem[]>([]);
   
+  // Connection Visibility State
+  const [showConnections, setShowConnections] = useState(true);
+  
   // Dragging State
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -1790,7 +1793,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 className="absolute origin-top-left will-change-transform"
                 style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
               >
-                  {renderConnections()}
+                  {showConnections && renderConnections()}
 
                   {items.map(item => (
                       <div
@@ -1870,6 +1873,36 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                >
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
                </button>
+          </div>
+
+          {/* Connection Toggle (Bottom Right) */}
+          <div className="absolute bottom-8 right-8 z-50">
+            <button 
+                className={`w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${showConnections ? 'text-blue-600 shadow-blue-200' : 'text-slate-400'}`}
+                onClick={() => setShowConnections(!showConnections)}
+                title={showConnections ? "Hide Connections" : "Show Connections"}
+            >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {showConnections ? (
+                        <>
+                            <circle cx="18" cy="5" r="3"></circle>
+                            <circle cx="6" cy="12" r="3"></circle>
+                            <circle cx="18" cy="19" r="3"></circle>
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                        </>
+                    ) : (
+                        <>
+                            <path d="M18 5a3 3 0 1 0-3 3"/>
+                            <path d="M6 12a3 3 0 1 0 3 3"/>
+                            <path d="M18 19a3 3 0 1 0-3-3"/>
+                            <line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.3"></line>
+                            <line x1="15.41" y1="6.51" x2="14" y2="7.33" opacity="0.3"></line>
+                            <line x1="2" y1="2" x2="22" y2="22" className="text-slate-300"></line>
+                        </>
+                    )}
+                </svg>
+            </button>
           </div>
 
           {/* Elegant FAB */}
