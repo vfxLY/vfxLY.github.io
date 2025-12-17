@@ -358,6 +358,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           const newSelectedIds = new Set(e.shiftKey ? selectedIds : []);
           
           items.forEach(item => {
+              // Intersection check logic
               if (
                   item.x < worldX + worldW &&
                   item.x + item.width > worldX &&
@@ -367,7 +368,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   newSelectedIds.add(item.id);
               }
           });
-          setSelectedIds(newSelectedIds);
+
+          // Optimization: Only update state if selection actually changed to prevent lags
+          if (newSelectedIds.size !== selectedIds.size || [...newSelectedIds].some(id => !selectedIds.has(id))) {
+              setSelectedIds(newSelectedIds);
+          }
       }
     }
   };
@@ -777,8 +782,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                               x2={itemCenter.x} y2={itemCenter.y}
                               stroke={isActive ? "#3b82f6" : "#cbd5e1"}
                               strokeWidth={isActive ? "2" : "1.5"}
-                              strokeDasharray={isActive ? "none" : "6,6"}
-                              className={`transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-40'}`}
+                              strokeDasharray={isActive ? "10,10" : "6,6"}
+                              className={`transition-all duration-300 connection-line ${isActive ? 'opacity-100 stroke-blue-500 animate-flow' : 'opacity-40'}`}
                           />
                       );
                   }
@@ -1117,13 +1122,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   return (
     <div className="h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-200">
+      <style>{`
+          @keyframes flowAnimation {
+              from { stroke-dashoffset: 20; }
+              to { stroke-dashoffset: 0; }
+          }
+          .animate-flow {
+              animation: flowAnimation 0.8s linear infinite;
+              will-change: stroke-dashoffset;
+          }
+      `}</style>
+
       <div className="flex-1 relative h-full">
-          {/* Subtle Grid */}
+          {/* Dot Pattern Background */}
           <div 
-            className="absolute inset-0 pointer-events-none opacity-[0.03] canvas-bg"
+            className="absolute inset-0 pointer-events-none canvas-bg"
             style={{
-                backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)',
-                backgroundSize: `${40 * view.scale}px ${40 * view.scale}px`,
+                opacity: 0.15,
+                backgroundImage: 'radial-gradient(#64748b 1.5px, transparent 1.5px)',
+                backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`,
                 backgroundPosition: `${view.x}px ${view.y}px`
             }}
           />
@@ -1148,9 +1165,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   {items.map(item => (
                       <div
                         key={item.id}
-                        className={`absolute group transition-shadow duration-500 rounded-3xl ${
+                        className={`absolute group transition-shadow duration-300 rounded-3xl ${
                             selectedIds.has(item.id) 
-                            ? 'shadow-2xl ring-1 ring-blue-500/50 z-20' 
+                            ? 'shadow-blue-500/30 ring-4 ring-blue-500 ring-offset-4 ring-offset-transparent shadow-2xl z-20' 
                             : activeItemId === item.id 
                                 ? 'shadow-xl z-10' 
                                 : ''
@@ -1166,11 +1183,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       >
                            {/* Simplified Remove Button (Only visible on hover/select) */}
                            <button 
-                             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-md opacity-0 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100' : 'group-hover:opacity-100'}`}
+                             className={`absolute -top-4 -right-4 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-md opacity-0 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : 'group-hover:opacity-100 scale-90 group-hover:scale-100'}`}
                              onClick={(e) => removeItem(item.id, e)}
                              onMouseDown={e => e.stopPropagation()}
                           >
-                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                           </button>
 
                           {item.type === 'image' && renderImageNode(item as ImageItem)}
@@ -1189,7 +1206,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               
               {selectionBox && (
                   <div 
-                      className="absolute border border-blue-500/30 bg-blue-500/5 backdrop-blur-[1px] rounded-lg pointer-events-none z-50 transition-all duration-75"
+                      className="absolute border-2 border-blue-500 bg-blue-500/10 backdrop-blur-[1px] rounded-lg pointer-events-none z-50 transition-none"
                       style={{
                           left: Math.min(selectionBox.startX, selectionBox.currentX),
                           top: Math.min(selectionBox.startY, selectionBox.currentY),
