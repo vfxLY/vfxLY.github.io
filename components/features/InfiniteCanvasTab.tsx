@@ -1153,7 +1153,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const renderEditOverlay = (isEditing: boolean, progress: number, prompt: string | undefined, onPromptChange: (val: string) => void, onExecute: () => void) => (
       <div 
-        className={`absolute bottom-6 left-6 right-6 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
+        className={`absolute bottom-6 left-6 right-24 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
         onMouseDown={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()} 
       >
@@ -1550,83 +1550,83 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   };
 
   const renderEditNode = (item: EditorItem) => {
-      const targetImage = items.find(i => i.id === item.data.targetId && i.type === 'image') as ImageItem | undefined;
+      const isActive = activeItemId === item.id || selectedIds.has(item.id);
+      const targetItem = items.find(i => i.id === item.data.targetId);
 
       return (
         <div 
-            className="w-full h-full flex flex-col p-6 glass-panel rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-300 animate-fade-in"
-            onMouseDown={e => e.stopPropagation()}
-            onTouchStart={e => e.stopPropagation()}
+          className="relative group w-full h-full flex flex-col transition-all duration-300"
+          onMouseDown={e => {
+            if ((e.target as HTMLElement).tagName === 'TEXTAREA') {
+               e.stopPropagation();
+            }
+          }}
+          onTouchStart={e => {
+             if ((e.target as HTMLElement).tagName === 'TEXTAREA') {
+               e.stopPropagation();
+            }
+          }}
         >
-            <div className="flex justify-between items-center mb-6">
-                <span className="text-[10px] font-bold tracking-widest px-2 py-1 bg-slate-100 text-slate-600 rounded uppercase">Editor</span>
-                <div className="text-[10px] font-mono text-slate-300">ID-{item.id.substr(0,4)}</div>
-            </div>
-
-            <div className="mb-6">
-                {targetImage ? (
-                    <div className="flex items-center gap-4 p-3 bg-white/50 border border-white/60 rounded-2xl shadow-sm">
-                        <img src={targetImage.src} className="w-12 h-12 rounded-xl object-cover bg-white shadow-sm" alt="target" />
-                        <span className="text-xs text-slate-600 font-medium truncate flex-1 font-mono">Input Image</span>
-                        <button onClick={() => updateItemData(item.id, { targetId: null })} className="text-slate-400 hover:text-slate-800 transition-colors">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    </div>
-                ) : (
-                    <div className="h-24 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center hover:border-slate-300 transition-colors">
-                        <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-2">Connect Source</span>
-                        <div className="flex gap-1">
-                            {items.filter(i => i.type === 'image').slice(0, 3).map(img => (
-                                <div 
-                                    key={img.id} 
-                                    className="w-6 h-6 rounded-full overflow-hidden border border-white shadow-sm cursor-pointer hover:scale-125 transition-transform"
-                                    onClick={() => updateItemData(item.id, { targetId: img.id })}
-                                >
-                                    <img src={(img as ImageItem).src} className="w-full h-full object-cover" />
-                                </div>
-                            ))}
+            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-glass-hover transition-all duration-500 relative flex flex-col p-6 ${item.data.isGenerating ? 'ring-2 ring-blue-500/30' : ''}`}>
+                 
+                 <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                         </div>
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Editor</span>
                     </div>
-                )}
-            </div>
+                 </div>
+                 
+                 <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500">
+                    {targetItem ? (
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                            <span>Target: {targetItem.type === 'image' ? 'Image' : 'Generator'} ({targetItem.id.substr(0,4)})</span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-orange-400">
+                            <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                            <span>No Target Selected</span>
+                        </div>
+                    )}
+                 </div>
 
-            <div className="flex-1">
-                <textarea 
-                    className="w-full p-4 bg-slate-50/50 border border-slate-100 rounded-2xl text-sm font-medium focus:bg-white focus:shadow-md outline-none resize-none h-32 transition-all placeholder:text-slate-300"
+                 <textarea 
+                    className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300 resize-none focus:outline-none text-sm leading-relaxed ${getAdaptiveFontSize(item.data.prompt)}`}
                     placeholder="Describe changes..."
                     value={item.data.prompt}
                     onChange={(e) => updateItemData(item.id, { prompt: e.target.value })}
                 />
-            </div>
-
-            <div className="mt-6">
-                {item.data.isGenerating ? (
-                     <div className="h-10 w-full bg-slate-100 rounded-xl overflow-hidden relative">
-                         <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-500 tracking-widest z-10">
-                             PROCESSING {item.data.progress}%
-                         </div>
-                         <div className="h-full bg-slate-200/50 transition-all duration-300" style={{ width: `${item.data.progress}%` }}></div>
-                     </div>
-                 ) : (
-                     <Button 
-                        onClick={() => executeGeneration(item.id)} 
-                        className="py-3 text-xs tracking-widest uppercase bg-slate-100 text-slate-800 hover:bg-slate-900 hover:text-white transition-colors w-full rounded-xl font-bold shadow-sm" 
-                        disabled={!item.data.targetId}
+                
+                <div className="mt-4 flex justify-end">
+                    <button 
+                        onClick={() => executeGeneration(item.id)}
+                        disabled={!targetItem || item.data.isGenerating || !item.data.prompt}
+                        className="bg-slate-900 text-white px-6 py-2 rounded-xl text-xs font-bold tracking-wide hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
-                        Apply Edit
-                     </Button>
-                 )}
+                        {item.data.isGenerating ? 'Editing...' : 'Apply'}
+                    </button>
+                </div>
+
+                {item.data.isGenerating && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-slate-200 border-t-purple-600 rounded-full animate-spin mb-2"></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Processing</span>
+                    </div>
+                )}
             </div>
+            
              <button 
-             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : ''}`}
-             onClick={(e) => removeItem(item.id, e)}
-             onMouseDown={e => e.stopPropagation()}
-             onTouchStart={e => e.stopPropagation()}
-           >
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-           </button>
-           
-           {renderResizeHandle(item.id)}
+                 className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`}
+                 onClick={(e) => removeItem(item.id, e)}
+                 onMouseDown={e => e.stopPropagation()}
+                 onTouchStart={e => e.stopPropagation()}
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+               </button>
+               
+               {renderResizeHandle(item.id)}
         </div>
       );
   };
