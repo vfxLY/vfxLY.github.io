@@ -33,13 +33,26 @@ interface BaseItem {
   parentId?: string; // Track upstream source
 }
 
+interface GenerationParams {
+  prompt: string;
+  sourceId: string;
+  steps: number;
+  cfg: number;
+}
+
 interface ImageItem extends BaseItem {
   type: 'image';
   src: string;
+  // History Support
+  history?: string[]; // Array of all generated image URLs for this node
+  historyIndex?: number; // Current index in history
   // Edit state
   editPrompt?: string;
   isEditing?: boolean;
   editProgress?: number;
+  // Regeneration
+  generationParams?: GenerationParams;
+  isRegenerating?: boolean;
 }
 
 interface GeneratorItem extends BaseItem {
@@ -57,6 +70,9 @@ interface GeneratorItem extends BaseItem {
     // Unified node fields
     resultImage?: string;
     mode: 'input' | 'result';
+    // History Support for Generator
+    history?: string[];
+    historyIndex?: number;
     // Edit state for result
     editPrompt?: string;
     isEditing?: boolean;
@@ -545,12 +561,132 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       }));
   };
 
+  const switchImageVersion = (itemId: string, index: number) => {
+      setItems(prev => prev.map(item => {
+          if (item.id === itemId && item.type === 'image') {
+              const imgItem = item as ImageItem;
+              const history = imgItem.history || [imgItem.src];
+              if (index >= 0 && index < history.length) {
+                  return {
+                      ...imgItem,
+                      src: history[index],
+                      historyIndex: index,
+                      history // ensure history is set
+                  };
+              }
+          }
+          return item;
+      }));
+  };
+
+  const switchGeneratorVersion = (itemId: string, index: number) => {
+      setItems(prev => prev.map(item => {
+          if (item.id === itemId && item.type === 'generator') {
+              const genItem = item as GeneratorItem;
+              const history = genItem.data.history || (genItem.data.resultImage ? [genItem.data.resultImage] : []);
+              if (index >= 0 && index < history.length) {
+                  return {
+                      ...genItem,
+                      data: {
+                          ...genItem.data,
+                          resultImage: history[index],
+                          historyIndex: index,
+                          history,
+                          mode: 'result' // Explicitly switch to result mode
+                      }
+                  };
+              }
+          }
+          return item;
+      }));
+  };
+
   // --- Generation Logic ---
 
   const convertSrcToFile = async (src: string): Promise<File> => {
     const res = await fetch(src);
     const blob = await res.blob();
     return new File([blob], "source.png", { type: "image/png" });
+  };
+
+  const regenerateImage = async (itemId: string) => {
+      const item = items.find(i => i.id === itemId) as ImageItem;
+      if (!item || !item.generationParams) return;
+
+      const { prompt, sourceId, steps, cfg } = item.generationParams;
+      const sourceItem = items.find(i => i.id === sourceId);
+      
+      if (!sourceItem) {
+          alert("Source image not found! Cannot regenerate.");
+          return;
+      }
+
+      const url = ensureHttps(serverUrl);
+      if (!url) {
+          alert("Please check Server URL");
+          return;
+      }
+
+      updateImageItem(itemId, { isRegenerating: true }); 
+
+      try {
+          let src = '';
+          if (sourceItem.type === 'image') src = (sourceItem as ImageItem).src;
+          else if (sourceItem.type === 'generator') src = (sourceItem as GeneratorItem).data.resultImage || '';
+          
+          if (!src) throw new Error("Source has no image data");
+
+          const file = await convertSrcToFile(src);
+          const serverFileName = await uploadImage(url, file);
+          
+          const clientId = generateClientId();
+          const workflow = generateEditWorkflow(prompt, serverFileName, steps || 20, cfg || 2.5);
+          const promptId = await queuePrompt(url, workflow, clientId);
+
+          const checkStatus = async () => {
+              try {
+                  const historyResponse = await getHistory(url, promptId);
+                  if (historyResponse[promptId]) {
+                      const result = historyResponse[promptId];
+                      if (result.status.status_str === 'success') {
+                           const outputs = result.outputs;
+                           for (const key in outputs) {
+                              if (outputs[key].images?.length > 0) {
+                                  const img = outputs[key].images[0];
+                                  const imgUrl = getImageUrl(url, img.filename, img.subfolder, img.type);
+                                  
+                                  // Update history and set new image
+                                  const currentHistory = item.history || [item.src];
+                                  const newHistory = [...currentHistory, imgUrl];
+                                  
+                                  updateImageItem(itemId, { 
+                                      src: imgUrl, 
+                                      isRegenerating: false,
+                                      history: newHistory,
+                                      historyIndex: newHistory.length - 1
+                                  });
+                                  return;
+                              }
+                           }
+                      } else if (result.status.status_str === 'error') {
+                           throw new Error("Regeneration failed");
+                      }
+                  }
+
+                  // Continue polling
+                  setTimeout(checkStatus, 1000);
+
+              } catch (e) {
+                  console.error(e);
+                  updateImageItem(itemId, { isRegenerating: false });
+              }
+          };
+          checkStatus();
+
+      } catch (e: any) {
+          alert(e.message);
+          updateImageItem(itemId, { isRegenerating: false });
+      }
   };
 
   const executeEdit = async (itemId: string, prompt: string) => {
@@ -580,7 +716,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           else updateItemData(itemId, { editProgress: 20 });
 
           const clientId = generateClientId();
-          const workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
+          const steps = 20;
+          const cfg = 2.5;
+          const workflow = generateEditWorkflow(prompt, serverFileName, steps, cfg);
           const promptId = await queuePrompt(url, workflow, clientId);
 
           const checkStatus = async () => {
@@ -604,7 +742,15 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                       height: item.height,
                                       zIndex: topZ + 2, 
                                       parentId: item.id, 
-                                      src: imgUrl
+                                      src: imgUrl,
+                                      history: [imgUrl], // Initialize history
+                                      historyIndex: 0,
+                                      generationParams: {
+                                          prompt,
+                                          sourceId: item.id,
+                                          steps,
+                                          cfg
+                                      }
                                   };
 
                                   setTopZ(prev => prev + 2);
@@ -702,11 +848,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                   const imgUrl = getImageUrl(url, img.filename, img.subfolder, img.type);
                                   
                                   if (item.type === 'generator') {
+                                      const currentHistory = item.data.history || (item.data.resultImage ? [item.data.resultImage] : []);
+                                      const newHistory = [...currentHistory, imgUrl];
+                                      
                                       updateItemData(itemId, { 
                                           isGenerating: false, 
                                           progress: 100, 
                                           resultImage: imgUrl, 
-                                          mode: 'result'
+                                          mode: 'result',
+                                          history: newHistory,
+                                          historyIndex: newHistory.length - 1
                                       });
                                   } else {
                                       const imgObj = new Image();
@@ -721,7 +872,15 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                               height: imgObj.height / 2,
                                               zIndex: topZ + 2,
                                               parentId: item.id, 
-                                              src: imgUrl
+                                              src: imgUrl,
+                                              history: [imgUrl],
+                                              historyIndex: 0,
+                                              generationParams: item.type === 'editor' ? {
+                                                  prompt: item.data.prompt,
+                                                  sourceId: item.data.targetId || '',
+                                                  steps: item.data.steps,
+                                                  cfg: item.data.cfg
+                                              } : undefined
                                           };
                                           setTopZ(prev => prev + 2);
                                           setItems(prev => [...prev, newItem]);
@@ -842,6 +1001,37 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             setPreviewImage({ src: item.src });
         }}
       >
+          {/* Loading Overlay for Regeneration */}
+          {item.isRegenerating && (
+             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
+                 <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin mb-2"></div>
+                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Regenerating</span>
+             </div>
+          )}
+          
+          {/* Version History Thumbnails (Floating Top Left) */}
+          {(item.history && item.history.length > 1) && (
+              <div 
+                className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
+                onMouseDown={e => e.stopPropagation()}
+              >
+                {item.history.map((histSrc, idx) => (
+                    <button
+                        key={idx}
+                        onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }}
+                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                            (item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx 
+                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                            : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
+                        }`}
+                        title={`Version ${idx + 1}`}
+                    >
+                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                    </button>
+                ))}
+            </div>
+          )}
+
           {/* Added background to handle aspect ratio differences cleanly */}
           <div className="w-full h-full flex items-center justify-center bg-slate-50">
             <img 
@@ -851,6 +1041,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             />
           </div>
           
+           <button 
+             className="absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"
+             onClick={(e) => removeItem(item.id, e)}
+             onMouseDown={e => e.stopPropagation()}
+           >
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+           </button>
+
           {renderEditOverlay(
               !!item.isEditing, 
               item.editProgress || 0, 
@@ -858,15 +1056,34 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               (val) => updateImageItem(item.id, { editPrompt: val }),
               () => executeEdit(item.id, item.editPrompt || '')
           )}
+          
+          {/* Action Buttons Group */}
+          <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end">
+             {/* Prominent White Refresh Button (Floating Card Style) */}
+             {item.generationParams && !item.isRegenerating && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        regenerateImage(item.id);
+                    }}
+                    className="w-12 h-12 bg-white rounded-2xl shadow-xl shadow-slate-200/50 text-slate-700 flex items-center justify-center hover:scale-110 hover:shadow-2xl hover:text-blue-600 active:scale-95 transition-all group/refresh"
+                    title="Regenerate New Version"
+                >
+                    <svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                </button>
+             )}
 
-          <a 
-              href={item.src} 
-              download={`img-${item.id}.png`}
-              className="absolute top-4 left-4 p-2 bg-white/20 backdrop-blur-md border border-white/30 text-white rounded-xl opacity-0 group-hover:opacity-100 hover:bg-white/40 transition-all"
-              onClick={e => e.stopPropagation()}
-          >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          </a>
+            <a 
+                href={item.src} 
+                download={`img-${item.id}.png`}
+                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
+                onClick={e => e.stopPropagation()}
+                title="Download"
+            >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </a>
+          </div>
+
       </div>
   );
 
@@ -944,7 +1161,30 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 )}
 
                 {isInput ? (
-                    <div className="w-full h-full p-8 flex flex-col items-center justify-center">
+                    <div className="w-full h-full p-8 flex flex-col items-center justify-center relative">
+                         {/* History Thumbnails (Input Mode) */}
+                        {(item.data.history && item.data.history.length > 0) && (
+                            <div 
+                                className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
+                                onMouseDown={e => e.stopPropagation()}
+                            >
+                                {item.data.history.map((histSrc, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
+                                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                            (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
+                                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                            : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'
+                                        }`}
+                                        title={`Version ${idx + 1}`}
+                                    >
+                                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                          <textarea 
                             rows={6}
                             className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-200 break-words ${getAdaptiveFontSize(item.data.prompt)}`}
@@ -969,6 +1209,29 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             if(item.data.resultImage) setPreviewImage({ src: item.data.resultImage });
                         }}
                     >
+                         {/* History Thumbnails (Result Mode) */}
+                        {(item.data.history && item.data.history.length > 1) && (
+                            <div 
+                                className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
+                                onMouseDown={e => e.stopPropagation()}
+                            >
+                                {item.data.history.map((histSrc, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
+                                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                            (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
+                                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                            : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
+                                        }`}
+                                        title={`Version ${idx + 1}`}
+                                    >
+                                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Center image with object-contain to prevent cropping */}
                         <div className="w-full h-full flex items-center justify-center bg-slate-50/50">
                             <img 
@@ -986,17 +1249,18 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             () => executeEdit(item.id, item.data.editPrompt || '')
                         )}
 
-                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 z-30">
-                             {/* Re-generate Button */}
+                        {/* Actions Bottom Right (Unified with ImageItem) */}
+                        <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end">
+                             {/* Re-generate Button (Big White Card) */}
                              <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     executeGeneration(item.id);
                                 }}
-                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
+                                className="w-12 h-12 bg-white rounded-2xl shadow-xl shadow-slate-200/50 text-slate-700 flex items-center justify-center hover:scale-110 hover:shadow-2xl hover:text-blue-600 active:scale-95 transition-all group/refresh"
                                 title="Re-generate"
                              >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                                <svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                              </button>
 
                              {/* Back to Edit Mode Button */}
@@ -1005,21 +1269,21 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                     e.stopPropagation();
                                     updateItemData(item.id, { mode: 'input' });
                                 }}
-                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
+                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
                                 title="Edit Prompt"
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                             </button>
                             
                             {/* Download Button */}
                             <a 
                                 href={item.data.resultImage} 
                                 download={`gen-${item.id}.png`}
-                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
+                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
                                 onClick={e => e.stopPropagation()}
                                 title="Download"
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             </a>
                         </div>
                     </div>
