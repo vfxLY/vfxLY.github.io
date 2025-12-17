@@ -171,6 +171,26 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     return 'text-base leading-relaxed'; // Standard readable size for long descriptions
   };
 
+  const copyPromptToActiveNode = (text: string) => {
+    if (!activeItemId) return;
+
+    setItems(prev => prev.map(item => {
+        if (item.id === activeItemId && item.type === 'generator') {
+             // It is a generator
+             const genItem = item as GeneratorItem;
+             return {
+                 ...item,
+                 data: {
+                     ...genItem.data,
+                     prompt: text,
+                     mode: 'input' // Switch to input mode to show the updated prompt
+                 }
+             };
+        }
+        return item;
+    }));
+  };
+
   // --- Actions ---
   
   const pasteItems = useCallback(() => {
@@ -1195,6 +1215,104 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       </div>
   );
 
+  const renderEditNode = (item: EditorItem) => {
+      const isActive = activeItemId === item.id || selectedIds.has(item.id);
+
+      return (
+        <div 
+          className="relative group w-full h-full flex flex-col transition-all duration-300"
+          onMouseDown={e => {
+            if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') {
+               e.stopPropagation();
+            }
+          }}
+          onTouchStart={e => {
+            if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') {
+               e.stopPropagation();
+            }
+          }}
+        >
+            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-glass-hover transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/30' : ''}`}>
+                
+                {item.data.isGenerating && (
+                    <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-20 flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 border-2 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6"></div>
+                        <span className="text-xs font-mono font-medium text-slate-400 tracking-widest uppercase">{item.data.progress}% Processing</span>
+                    </div>
+                )}
+
+                <div className="w-full h-full p-6 flex flex-col relative bg-white/50">
+                    <div className="flex items-center justify-between mb-4">
+                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Editor Node</span>
+                         {item.data.targetId ? (
+                            <span className="text-[10px] text-green-500 font-mono font-bold flex items-center gap-1">
+                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                                Linked
+                            </span>
+                         ) : (
+                            <span className="text-[10px] text-orange-400 font-mono font-bold flex items-center gap-1">
+                                <div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>
+                                Unlinked
+                            </span>
+                         )}
+                    </div>
+
+                    <textarea 
+                        rows={4}
+                        className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-sm leading-relaxed tracking-tight font-sans transition-all duration-200 border-b border-transparent focus:border-slate-200`}
+                        placeholder="Describe edits..."
+                        value={item.data.prompt}
+                        onChange={(e) => updateItemData(item.id, { prompt: e.target.value })}
+                    />
+                    
+                    <div className="flex gap-4 mt-4 pt-4 border-t border-slate-100/50">
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Steps</label>
+                            <input 
+                                type="number" 
+                                className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-blue-200 rounded-lg px-2 py-1 text-xs font-mono transition-all outline-none"
+                                value={item.data.steps}
+                                onChange={(e) => updateItemData(item.id, { steps: Number(e.target.value) })}
+                            />
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">CFG</label>
+                            <input 
+                                type="number" 
+                                className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-blue-200 rounded-lg px-2 py-1 text-xs font-mono transition-all outline-none"
+                                value={item.data.cfg}
+                                onChange={(e) => updateItemData(item.id, { cfg: Number(e.target.value) })}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className={`absolute top-full left-0 w-full flex justify-center pt-4 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-2 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
+                 <button 
+                    onClick={() => executeGeneration(item.id)}
+                    disabled={!item.data.targetId}
+                    className="bg-slate-900 text-white px-6 py-2 rounded-full shadow-xl shadow-slate-900/10 text-[10px] font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2 uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <span>Apply Edit</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+            </div>
+
+            <button 
+                 className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`}
+                 onClick={(e) => removeItem(item.id, e)}
+                 onMouseDown={e => e.stopPropagation()}
+                 onTouchStart={e => e.stopPropagation()}
+               >
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
+            {renderResizeHandle(item.id)}
+        </div>
+      );
+  };
+
   const renderImageNode = (item: ImageItem) => {
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       return (
@@ -1207,19 +1325,30 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       >
           {/* Prompt Info Panel (Sidecar) */}
           {item.generationParams?.prompt && (
-             <div className="absolute top-0 left-full ml-4 w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 origin-left scale-90 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto overflow-hidden">
-                 <div className="p-4 overflow-y-auto custom-scrollbar">
-                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
-                     <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.generationParams.prompt}</p>
-                 </div>
-                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
-                     <div>
-                         <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
-                         <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.steps}</span>
+             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
+                 <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden">
+                     <div className="p-4 overflow-y-auto custom-scrollbar">
+                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
+                         <p 
+                            className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text cursor-pointer hover:text-blue-600 hover:bg-blue-50/50 rounded p-1 -ml-1 transition-all active:scale-95"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                copyPromptToActiveNode(item.generationParams!.prompt);
+                            }}
+                            title="Click to copy to active generator input"
+                         >
+                            {item.generationParams.prompt}
+                         </p>
                      </div>
-                     <div>
-                         <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
-                         <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.cfg}</span>
+                     <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
+                         <div>
+                             <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
+                             <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.steps}</span>
+                         </div>
+                         <div>
+                             <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
+                             <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.cfg}</span>
+                         </div>
                      </div>
                  </div>
              </div>
@@ -1337,30 +1466,41 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         >
             {/* START: New Info Panel */}
             {item.data.prompt && (
-             <div className="absolute top-0 left-full ml-4 w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 origin-left scale-90 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto overflow-hidden">
-                 <div className="p-4 overflow-y-auto custom-scrollbar">
-                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
-                     <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.data.prompt}</p>
-                     
-                     {item.data.negPrompt && (
-                        <>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-3">Negative</div>
-                            <p className="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.data.negPrompt}</p>
-                        </>
-                     )}
-                 </div>
-                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
-                     <div>
-                         <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
-                         <span className="text-xs font-mono font-bold text-slate-700">{item.data.steps}</span>
+             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
+                 <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden">
+                     <div className="p-4 overflow-y-auto custom-scrollbar">
+                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
+                         <p 
+                            className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text cursor-pointer hover:text-blue-600 hover:bg-blue-50/50 rounded p-1 -ml-1 transition-all active:scale-95"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                copyPromptToActiveNode(item.data.prompt);
+                            }}
+                            title="Click to copy to active generator input"
+                         >
+                            {item.data.prompt}
+                         </p>
+                         
+                         {item.data.negPrompt && (
+                            <>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-3">Negative</div>
+                                <p className="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.data.negPrompt}</p>
+                            </>
+                         )}
                      </div>
-                     <div>
-                         <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
-                         <span className="text-xs font-mono font-bold text-slate-700">{item.data.cfg}</span>
-                     </div>
-                     <div>
-                         <span className="text-[8px] text-slate-400 uppercase block">Model</span>
-                         <span className="text-xs font-mono font-bold text-slate-700 uppercase">{item.data.model}</span>
+                     <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
+                         <div>
+                             <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
+                             <span className="text-xs font-mono font-bold text-slate-700">{item.data.steps}</span>
+                         </div>
+                         <div>
+                             <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
+                             <span className="text-xs font-mono font-bold text-slate-700">{item.data.cfg}</span>
+                         </div>
+                         <div>
+                             <span className="text-[8px] text-slate-400 uppercase block">Model</span>
+                             <span className="text-xs font-mono font-bold text-slate-700 uppercase">{item.data.model}</span>
+                         </div>
                      </div>
                  </div>
              </div>
@@ -1597,88 +1737,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
            </button>
            
            {renderResizeHandle(item.id)}
-        </div>
-      );
-  };
-
-  const renderEditNode = (item: EditorItem) => {
-      const isActive = activeItemId === item.id || selectedIds.has(item.id);
-      const targetItem = items.find(i => i.id === item.data.targetId);
-
-      return (
-        <div 
-          className="relative group w-full h-full flex flex-col transition-all duration-300"
-          onMouseDown={e => {
-            if ((e.target as HTMLElement).tagName === 'TEXTAREA') {
-               e.stopPropagation();
-            }
-          }}
-          onTouchStart={e => {
-             if ((e.target as HTMLElement).tagName === 'TEXTAREA') {
-               e.stopPropagation();
-            }
-          }}
-        >
-            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-glass-hover transition-all duration-500 relative flex flex-col p-6 ${item.data.isGenerating ? 'ring-2 ring-blue-500/30' : ''}`}>
-                 
-                 <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                        </div>
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Editor</span>
-                    </div>
-                 </div>
-                 
-                 <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-500">
-                    {targetItem ? (
-                        <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                            <span>Target: {targetItem.type === 'image' ? 'Image' : 'Generator'} ({targetItem.id.substr(0,4)})</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 text-orange-400">
-                            <span className="w-2 h-2 rounded-full bg-orange-400"></span>
-                            <span>No Target Selected</span>
-                        </div>
-                    )}
-                 </div>
-
-                 <textarea 
-                    className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300 resize-none focus:outline-none text-sm leading-relaxed ${getAdaptiveFontSize(item.data.prompt)}`}
-                    placeholder="Describe changes..."
-                    value={item.data.prompt}
-                    onChange={(e) => updateItemData(item.id, { prompt: e.target.value })}
-                />
-                
-                <div className="mt-4 flex justify-end">
-                    <button 
-                        onClick={() => executeGeneration(item.id)}
-                        disabled={!targetItem || item.data.isGenerating || !item.data.prompt}
-                        className="bg-slate-900 text-white px-6 py-2 rounded-xl text-xs font-bold tracking-wide hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                        {item.data.isGenerating ? 'Editing...' : 'Apply'}
-                    </button>
-                </div>
-
-                {item.data.isGenerating && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
-                        <div className="w-8 h-8 border-2 border-slate-200 border-t-purple-600 rounded-full animate-spin mb-2"></div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">Processing</span>
-                    </div>
-                )}
-            </div>
-            
-             <button 
-                 className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`}
-                 onClick={(e) => removeItem(item.id, e)}
-                 onMouseDown={e => e.stopPropagation()}
-                 onTouchStart={e => e.stopPropagation()}
-               >
-                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-               </button>
-               
-               {renderResizeHandle(item.id)}
         </div>
       );
   };
