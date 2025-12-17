@@ -1205,6 +1205,26 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             setPreviewImage({ src: item.src });
         }}
       >
+          {/* Prompt Info Panel (Sidecar) */}
+          {item.generationParams?.prompt && (
+             <div className="absolute top-0 left-full ml-4 w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 origin-left scale-90 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto overflow-hidden">
+                 <div className="p-4 overflow-y-auto custom-scrollbar">
+                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
+                     <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.generationParams.prompt}</p>
+                 </div>
+                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
+                     <div>
+                         <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
+                         <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.steps}</span>
+                     </div>
+                     <div>
+                         <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
+                         <span className="text-xs font-mono font-bold text-slate-700">{item.generationParams.cfg}</span>
+                     </div>
+                 </div>
+             </div>
+          )}
+
           <div className="w-full h-full rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-500 bg-white overflow-hidden relative">
               {/* Loading Overlay for Regeneration */}
               {item.isRegenerating && (
@@ -1315,6 +1335,38 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             }
           }}
         >
+            {/* START: New Info Panel */}
+            {item.data.prompt && (
+             <div className="absolute top-0 left-full ml-4 w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 origin-left scale-90 group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto overflow-hidden">
+                 <div className="p-4 overflow-y-auto custom-scrollbar">
+                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
+                     <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.data.prompt}</p>
+                     
+                     {item.data.negPrompt && (
+                        <>
+                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 mt-3">Negative</div>
+                            <p className="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text">{item.data.negPrompt}</p>
+                        </>
+                     )}
+                 </div>
+                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex gap-4 shrink-0">
+                     <div>
+                         <span className="text-[8px] text-slate-400 uppercase block">Steps</span>
+                         <span className="text-xs font-mono font-bold text-slate-700">{item.data.steps}</span>
+                     </div>
+                     <div>
+                         <span className="text-[8px] text-slate-400 uppercase block">CFG</span>
+                         <span className="text-xs font-mono font-bold text-slate-700">{item.data.cfg}</span>
+                     </div>
+                     <div>
+                         <span className="text-[8px] text-slate-400 uppercase block">Model</span>
+                         <span className="text-xs font-mono font-bold text-slate-700 uppercase">{item.data.model}</span>
+                     </div>
+                 </div>
+             </div>
+            )}
+            {/* END: New Info Panel */}
+
             {isInput && (
                 <div className={`absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
                     <div className="flex items-center gap-1 p-1.5 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50">
