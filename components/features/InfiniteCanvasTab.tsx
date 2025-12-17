@@ -584,13 +584,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             const x = (clientX - view.x) / view.scale;
             const y = (clientY - view.y) / view.scale;
 
+            const maxSide = 512;
+            let finalWidth = img.width;
+            let finalHeight = img.height;
+
+            if (img.width > img.height) {
+                finalWidth = maxSide;
+                finalHeight = (img.height / img.width) * maxSide;
+            } else {
+                finalHeight = maxSide;
+                finalWidth = (img.width / img.height) * maxSide;
+            }
+
             const newItem: ImageItem = {
                 id: Math.random().toString(36).substr(2, 9),
                 type: 'image',
-                x: x - (img.width / 4), 
-                y: y - (img.height / 4),
-                width: img.width / 2,
-                height: img.height / 2,
+                x: x - (finalWidth / 2), 
+                y: y - (finalHeight / 2),
+                width: finalWidth,
+                height: finalHeight,
                 zIndex: topZ + 1,
                 src
             };
@@ -678,13 +690,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         const img = new Image();
         img.src = src;
         img.onload = () => {
+            const maxSide = 512;
+            let finalWidth = img.width;
+            let finalHeight = img.height;
+
+            if (img.width > img.height) {
+                finalWidth = maxSide;
+                finalHeight = (img.height / img.width) * maxSide;
+            } else {
+                finalHeight = maxSide;
+                finalWidth = (img.width / img.height) * maxSide;
+            }
+
             const newItem: ImageItem = {
                 id: Math.random().toString(36).substr(2, 9),
                 type: 'image',
-                x: ((-view.x) + (window.innerWidth / 2) - (img.width/4)) / view.scale,
-                y: ((-view.y) + (window.innerHeight / 2) - (img.height/4)) / view.scale,
-                width: img.width / 2,
-                height: img.height / 2,
+                x: ((-view.x) + (window.innerWidth / 2) - (finalWidth / 2)) / view.scale,
+                y: ((-view.y) + (window.innerHeight / 2) - (finalHeight / 2)) / view.scale,
+                width: finalWidth,
+                height: finalHeight,
                 zIndex: topZ + 1,
                 src
             };
