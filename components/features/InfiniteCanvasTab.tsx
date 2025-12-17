@@ -77,6 +77,8 @@ interface GeneratorItem extends BaseItem {
     editPrompt?: string;
     isEditing?: boolean;
     editProgress?: number;
+    // Flux options
+    useLora?: boolean; 
   };
 }
 
@@ -612,7 +614,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               cfg: 3.5,
               isGenerating: false,
               progress: 0,
-              mode: 'input'
+              mode: 'input',
+              useLora: true // Default enable Cartoon LoRA
           }
       };
       setTopZ(prev => prev + 1);
@@ -931,7 +934,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           if (item.type === 'generator') {
               const data = item.data;
               if (data.model === 'flux') {
-                  workflow = generateFluxWorkflow(data.prompt, data.width, data.height, data.steps, true);
+                  // Pass useLora option
+                  workflow = generateFluxWorkflow(data.prompt, data.width, data.height, data.steps, data.useLora ?? true);
               } else {
                   workflow = generateSdxlWorkflow(data.prompt, data.negPrompt, data.width, data.height, data.steps, data.cfg);
               }
@@ -1332,6 +1336,21 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 value={item.data.negPrompt}
                                 onChange={(e) => updateItemData(item.id, { negPrompt: e.target.value })}
                             />
+                        )}
+
+                         {/* New LoRA Toggle for Flux */}
+                        {item.data.model === 'flux' && (
+                             <div 
+                                className="mt-4 flex items-center gap-3 cursor-pointer group/lora bg-slate-50/50 hover:bg-slate-50 px-4 py-2 rounded-full border border-slate-100/50 transition-colors"
+                                onClick={() => updateItemData(item.id, { useLora: !(item.data.useLora ?? true) })}
+                             >
+                                <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${item.data.useLora !== false ? 'text-indigo-500' : 'text-slate-300'}`}>
+                                    Cartoon LoRA
+                                </span>
+                                <div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-300 ${item.data.useLora !== false ? 'bg-indigo-500' : 'bg-slate-200'}`}>
+                                    <div className={`w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${item.data.useLora !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </div>
+                             </div>
                         )}
                     </div>
                 ) : (
