@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback } from 'react';
+import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
 import Button from '../ui/Button';
 import { 
   ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage, getLogs, parseConsoleProgress 
@@ -134,6 +134,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   // Mouse Tracking for Paste
   const mousePosRef = useRef({ x: 0, y: 0 });
+
+  // Touch Tracking
+  const lastPinchDistRef = useRef<number | null>(null);
 
   // Preview Image State
   const [previewImage, setPreviewImage] = useState<{ src: string; dims?: { w: number; h: number } } | null>(null);
@@ -399,6 +402,122 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       setDragMode('canvas'); 
   };
 
+  // --- Touch Event Handlers for Mobile ---
+
+  const handleTouchStart = (e: TouchEvent) => {
+    // If interacting with inputs, don't drag/pan unless it's a pinch
+    if ((e.target as HTMLElement).closest('input, textarea, button, .no-drag')) {
+        // Allow text selection or input focus, but if 2 fingers, we override for zoom
+        if (e.touches.length !== 2) return;
+    }
+
+    if (e.touches.length === 2) {
+        // Pinch Start
+        e.preventDefault(); // Prevent browser zoom
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        lastPinchDistRef.current = dist;
+        // Don't set isDragging true for pinch, or handle it separately
+        setDragMode('canvas'); 
+    } else if (e.touches.length === 1) {
+        const isCanvasBg = e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-bg');
+        if (isCanvasBg) {
+             setDragMode('canvas');
+             setIsDragging(true);
+             setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+        }
+    }
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+        // Pinch Move
+        e.preventDefault();
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        
+        if (lastPinchDistRef.current) {
+            const scaleChange = dist / lastPinchDistRef.current;
+            const newScale = Math.min(Math.max(0.1, view.scale * scaleChange), 5);
+            
+            // Calculate center of pinch to zoom towards
+            const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            
+            if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                const localX = cx - rect.left;
+                const localY = cy - rect.top;
+                
+                // Keep the focal point stationary:
+                // world = (local - translate) / oldScale
+                // newTranslate = local - world * newScale
+                const worldX = (localX - view.x) / view.scale;
+                const worldY = (localY - view.y) / view.scale;
+                
+                setView({
+                    x: localX - worldX * newScale,
+                    y: localY - worldY * newScale,
+                    scale: newScale
+                });
+            }
+        }
+        lastPinchDistRef.current = dist;
+    } else if (e.touches.length === 1 && isDragging) {
+        // Prevent scroll if dragging canvas or item
+        // Allow scroll if target is textarea
+        if (!((e.target as HTMLElement).closest('textarea'))) {
+           if (e.cancelable) e.preventDefault();
+        }
+        
+        const touch = e.touches[0];
+        const dx = touch.clientX - dragStart.x;
+        const dy = touch.clientY - dragStart.y;
+        
+        if (dragMode === 'item') {
+             setItems(prev => prev.map(item => {
+              if (selectedIds.has(item.id)) {
+                  return { ...item, x: item.x + dx / view.scale, y: item.y + dy / view.scale };
+              }
+              return item;
+          }));
+        } else if (dragMode === 'canvas') {
+            setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        }
+        
+        setDragStart({ x: touch.clientX, y: touch.clientY });
+    }
+  };
+
+  const handleTouchEnd = () => {
+      setIsDragging(false);
+      lastPinchDistRef.current = null;
+  };
+
+  const handleItemTouchStart = (e: TouchEvent, id: string) => {
+      e.stopPropagation();
+      const newZ = topZ + 1;
+      setTopZ(newZ);
+      setItems(prev => prev.map(i => i.id === id ? { ...i, zIndex: newZ } : i));
+      
+      if (!selectedIds.has(id)) {
+          setSelectedIds(new Set([id]));
+          setActiveItemId(id);
+      } else {
+          setActiveItemId(id);
+      }
+
+      if (!(e.target as HTMLElement).closest('input, textarea, button')) {
+        setDragMode('item');
+        setIsDragging(true);
+        setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+      }
+  };
+
   const handleDragOver = (e: DragEvent) => e.preventDefault();
 
   const handleDrop = (e: DragEvent) => {
@@ -531,7 +650,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     }
   };
 
-  const removeItem = (id: string, e: MouseEvent) => {
+  const removeItem = (id: string, e: MouseEvent | TouchEvent) => {
       e.stopPropagation();
       setItems(prev => prev.filter(i => i.id !== id));
       if (activeItemId === id) setActiveItemId(null);
@@ -963,6 +1082,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       <div 
         className={`absolute bottom-6 left-6 right-6 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
         onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()} 
       >
           <div className="glass-panel p-2 rounded-2xl flex items-center gap-2 shadow-glass-hover bg-white/80 backdrop-blur-xl">
               <input 
@@ -993,7 +1113,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       </div>
   );
 
-  const renderImageNode = (item: ImageItem) => (
+  const renderImageNode = (item: ImageItem) => {
+      const isActive = activeItemId === item.id || selectedIds.has(item.id);
+      return (
       <div 
         className="relative group w-full h-full rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-500 select-none bg-white overflow-hidden"
         onDoubleClick={(e) => {
@@ -1014,6 +1136,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               <div 
                 className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
                 onMouseDown={e => e.stopPropagation()}
+                onTouchStart={e => e.stopPropagation()}
               >
                 {item.history.map((histSrc, idx) => (
                     <button
@@ -1042,9 +1165,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           </div>
           
            <button 
-             className="absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"
+             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`}
              onClick={(e) => removeItem(item.id, e)}
              onMouseDown={e => e.stopPropagation()}
+             onTouchStart={e => e.stopPropagation()}
            >
              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
            </button>
@@ -1058,7 +1182,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           )}
           
           {/* Action Buttons Group */}
-          <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end">
+          <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
              {/* Prominent White Refresh Button (Floating Card Style) */}
              {item.generationParams && !item.isRegenerating && (
                 <button
@@ -1076,7 +1200,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             <a 
                 href={item.src} 
                 download={`img-${item.id}.png`}
-                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
+                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg transition-all hover:bg-white hover:scale-105"
                 onClick={e => e.stopPropagation()}
                 title="Download"
             >
@@ -1086,9 +1210,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
       </div>
   );
+  };
 
   const renderGeneratorNode = (item: GeneratorItem) => {
       const isInput = item.data.mode === 'input';
+      const isActive = activeItemId === item.id || selectedIds.has(item.id);
 
       return (
         <div 
@@ -1098,9 +1224,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                e.stopPropagation();
             }
           }}
+          onTouchStart={e => {
+            if ((e.target as HTMLElement).tagName === 'TEXTAREA') {
+               e.stopPropagation();
+            }
+          }}
         >
             {isInput && (
-                <div className="absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50">
+                <div className={`absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
                     <div className="flex items-center gap-1 p-1.5 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50">
                         <button 
                             className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'flux' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -1167,6 +1298,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             <div 
                                 className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
                                 onMouseDown={e => e.stopPropagation()}
+                                onTouchStart={e => e.stopPropagation()}
                             >
                                 {item.data.history.map((histSrc, idx) => (
                                     <button
@@ -1214,6 +1346,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             <div 
                                 className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
                                 onMouseDown={e => e.stopPropagation()}
+                                onTouchStart={e => e.stopPropagation()}
                             >
                                 {item.data.history.map((histSrc, idx) => (
                                     <button
@@ -1250,7 +1383,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         )}
 
                         {/* Actions Bottom Right (Unified with ImageItem) */}
-                        <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end">
+                        <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {/* Re-generate Button (Big White Card) */}
                              <button
                                 onClick={(e) => {
@@ -1269,7 +1402,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                     e.stopPropagation();
                                     updateItemData(item.id, { mode: 'input' });
                                 }}
-                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
+                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg transition-all hover:bg-white hover:scale-105"
                                 title="Edit Prompt"
                             >
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -1279,7 +1412,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             <a 
                                 href={item.data.resultImage} 
                                 download={`gen-${item.id}.png`}
-                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-105"
+                                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg transition-all hover:bg-white hover:scale-105"
                                 onClick={e => e.stopPropagation()}
                                 title="Download"
                             >
@@ -1291,7 +1424,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             </div>
 
             {isInput && !item.data.isGenerating && (
-                <div className="absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50">
+                <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
                     <button 
                         onClick={() => executeGeneration(item.id)}
                         className="bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl shadow-slate-900/20 text-xs font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"
@@ -1301,6 +1434,15 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     </button>
                 </div>
             )}
+            
+            <button 
+             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`}
+             onClick={(e) => removeItem(item.id, e)}
+             onMouseDown={e => e.stopPropagation()}
+             onTouchStart={e => e.stopPropagation()}
+           >
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+           </button>
         </div>
       );
   };
@@ -1312,6 +1454,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         <div 
             className="w-full h-full flex flex-col p-6 glass-panel rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-300 animate-fade-in"
             onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
         >
             <div className="flex justify-between items-center mb-6">
                 <span className="text-[10px] font-bold tracking-widest px-2 py-1 bg-slate-100 text-slate-600 rounded uppercase">Editor</span>
@@ -1372,6 +1515,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                      </Button>
                  )}
             </div>
+             <button 
+             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : ''}`}
+             onClick={(e) => removeItem(item.id, e)}
+             onMouseDown={e => e.stopPropagation()}
+             onTouchStart={e => e.stopPropagation()}
+           >
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+           </button>
         </div>
       );
   };
@@ -1409,6 +1560,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
@@ -1436,16 +1590,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             zIndex: item.zIndex,
                         }}
                         onMouseDown={(e) => handleItemMouseDown(e, item.id)}
+                        onTouchStart={(e) => handleItemTouchStart(e, item.id)}
                       >
-                           {/* Improved Remove Button (Position fixed to -top-2 -right-2 for better visual attachment) */}
-                           <button 
-                             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100'}`}
-                             onClick={(e) => removeItem(item.id, e)}
-                             onMouseDown={e => e.stopPropagation()}
-                          >
-                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                          </button>
-
                           {item.type === 'image' && renderImageNode(item as ImageItem)}
                           {item.type === 'generator' && renderGeneratorNode(item as GeneratorItem)}
                           {item.type === 'editor' && renderEditNode(item as EditorItem)}
