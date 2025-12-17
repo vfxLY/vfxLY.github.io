@@ -1117,51 +1117,88 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       return (
       <div 
-        className="relative group w-full h-full rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-500 select-none bg-white overflow-hidden"
+        className="relative group w-full h-full select-none"
         onDoubleClick={(e) => {
             e.stopPropagation();
             setPreviewImage({ src: item.src });
         }}
       >
-          {/* Loading Overlay for Regeneration */}
-          {item.isRegenerating && (
-             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
-                 <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin mb-2"></div>
-                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Regenerating</span>
-             </div>
-          )}
-          
-          {/* Version History Thumbnails (Floating Top Left) */}
-          {(item.history && item.history.length > 1) && (
-              <div 
-                className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
-                onMouseDown={e => e.stopPropagation()}
-                onTouchStart={e => e.stopPropagation()}
-              >
-                {item.history.map((histSrc, idx) => (
-                    <button
-                        key={idx}
-                        onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }}
-                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
-                            (item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx 
-                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
-                            : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
-                        }`}
-                        title={`Version ${idx + 1}`}
-                    >
-                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
-                    </button>
-                ))}
-            </div>
-          )}
+          <div className="w-full h-full rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-500 bg-white overflow-hidden relative">
+              {/* Loading Overlay for Regeneration */}
+              {item.isRegenerating && (
+                 <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
+                     <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin mb-2"></div>
+                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Regenerating</span>
+                 </div>
+              )}
+              
+              {/* Version History Thumbnails (Floating Top Left) */}
+              {(item.history && item.history.length > 1) && (
+                  <div 
+                    className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1"
+                    onMouseDown={e => e.stopPropagation()}
+                    onTouchStart={e => e.stopPropagation()}
+                  >
+                    {item.history.map((histSrc, idx) => (
+                        <button
+                            key={idx}
+                            onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }}
+                            className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                (item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx 
+                                ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
+                            }`}
+                            title={`Version ${idx + 1}`}
+                        >
+                            <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                        </button>
+                    ))}
+                </div>
+              )}
 
-          {/* Added background to handle aspect ratio differences cleanly */}
-          <div className="w-full h-full flex items-center justify-center bg-slate-50">
-            <img 
-                src={item.src} 
-                alt="uploaded" 
-                className="max-w-full max-h-full object-contain pointer-events-none select-none"
-            />
+              {/* Added background to handle aspect ratio differences cleanly */}
+              <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                <img 
+                    src={item.src} 
+                    alt="uploaded" 
+                    className="max-w-full max-h-full object-contain pointer-events-none select-none"
+                />
+              </div>
+
+              {renderEditOverlay(
+                  !!item.isEditing, 
+                  item.editProgress || 0, 
+                  item.editPrompt, 
+                  (val) => updateImageItem(item.id, { editPrompt: val }),
+                  () => executeEdit(item.id, item.editPrompt || '')
+              )}
+              
+              {/* Action Buttons Group */}
+              <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
+                 {/* Prominent White Refresh Button (Floating Card Style) */}
+                 {item.generationParams && !item.isRegenerating && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            regenerateImage(item.id);
+                        }}
+                        className="w-12 h-12 bg-white rounded-2xl shadow-xl shadow-slate-200/50 text-slate-700 flex items-center justify-center hover:scale-110 hover:shadow-2xl hover:text-blue-600 active:scale-95 transition-all group/refresh"
+                        title="Regenerate New Version"
+                    >
+                        <svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    </button>
+                 )}
+
+                <a 
+                    href={item.src} 
+                    download={`img-${item.id}.png`}
+                    className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg transition-all hover:bg-white hover:scale-105"
+                    onClick={e => e.stopPropagation()}
+                    title="Download"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                </a>
+              </div>
           </div>
           
            <button 
@@ -1172,42 +1209,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
            >
              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
            </button>
-
-          {renderEditOverlay(
-              !!item.isEditing, 
-              item.editProgress || 0, 
-              item.editPrompt, 
-              (val) => updateImageItem(item.id, { editPrompt: val }),
-              () => executeEdit(item.id, item.editPrompt || '')
-          )}
-          
-          {/* Action Buttons Group */}
-          <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
-             {/* Prominent White Refresh Button (Floating Card Style) */}
-             {item.generationParams && !item.isRegenerating && (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        regenerateImage(item.id);
-                    }}
-                    className="w-12 h-12 bg-white rounded-2xl shadow-xl shadow-slate-200/50 text-slate-700 flex items-center justify-center hover:scale-110 hover:shadow-2xl hover:text-blue-600 active:scale-95 transition-all group/refresh"
-                    title="Regenerate New Version"
-                >
-                    <svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                </button>
-             )}
-
-            <a 
-                href={item.src} 
-                download={`img-${item.id}.png`}
-                className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-700 rounded-xl flex items-center justify-center shadow-lg transition-all hover:bg-white hover:scale-105"
-                onClick={e => e.stopPropagation()}
-                title="Download"
-            >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </a>
-          </div>
-
       </div>
   );
   };
