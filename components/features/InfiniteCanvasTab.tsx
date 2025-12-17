@@ -1620,15 +1620,20 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           </div>
 
           {/* Minimalist Server Config */}
-          <div className="absolute top-6 left-6 group z-50">
-               <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md pl-3 pr-1 py-1 rounded-full border border-white/40 shadow-sm transition-all hover:bg-white hover:shadow-md">
-                   <div className={`w-2 h-2 rounded-full ${serverUrl ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
-                   <input 
-                    value={serverUrl} 
-                    onChange={e => setServerUrl(e.target.value)}
-                    className="bg-transparent border-none text-[10px] font-mono text-slate-500 w-24 focus:w-48 transition-all focus:outline-none placeholder:text-slate-300"
-                    placeholder="Server URL"
-                   />
+          <div className="absolute top-6 left-6 z-50 group">
+               <div className="flex items-center bg-white/30 backdrop-blur-md rounded-full border border-white/20 shadow-sm transition-all duration-500 ease-out p-1.5 hover:bg-white hover:shadow-lg hover:border-white/60 focus-within:bg-white focus-within:shadow-lg focus-within:border-white/60 cursor-pointer">
+                   {/* Status Dot */}
+                   <div className={`w-3 h-3 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400 shadow-emerald-400/50' : 'bg-red-400 shadow-red-400/50'} shrink-0`} />
+                   
+                   {/* Input Field (Hidden by default, reveals on hover/focus) */}
+                   <div className="w-0 overflow-hidden group-hover:w-56 focus-within:w-56 transition-all duration-500 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                       <input 
+                        value={serverUrl} 
+                        onChange={e => setServerUrl(e.target.value)}
+                        className="bg-transparent border-none text-[10px] font-mono text-slate-600 w-full pl-3 pr-2 focus:outline-none placeholder:text-slate-300 h-full"
+                        placeholder="Server URL"
+                       />
+                   </div>
                </div>
           </div>
 
