@@ -851,14 +851,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             />
           </div>
           
-           <button 
-             className="absolute -top-3 -right-3 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 hover:bg-rose-50"
-             onClick={(e) => removeItem(item.id, e)}
-             onMouseDown={e => e.stopPropagation()}
-           >
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-           </button>
-
           {renderEditOverlay(
               !!item.isEditing, 
               item.editProgress || 0, 
@@ -1181,13 +1173,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         }}
                         onMouseDown={(e) => handleItemMouseDown(e, item.id)}
                       >
-                           {/* Simplified Remove Button (Only visible on hover/select) */}
+                           {/* Improved Remove Button (Position fixed to -top-2 -right-2 for better visual attachment) */}
                            <button 
-                             className={`absolute -top-4 -right-4 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-md opacity-0 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : 'group-hover:opacity-100 scale-90 group-hover:scale-100'}`}
+                             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100'}`}
                              onClick={(e) => removeItem(item.id, e)}
                              onMouseDown={e => e.stopPropagation()}
                           >
-                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                           </button>
 
                           {item.type === 'image' && renderImageNode(item as ImageItem)}
