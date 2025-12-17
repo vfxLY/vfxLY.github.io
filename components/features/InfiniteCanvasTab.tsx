@@ -459,8 +459,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           type: 'generator',
           x: centerX,
           y: centerY,
-          width: 420,
-          height: 420,
+          width: 400,
+          height: 400,
           zIndex: topZ + 1,
           data: {
               model: 'flux',
@@ -800,7 +800,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         className={`absolute bottom-6 left-6 right-6 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
         onMouseDown={e => e.stopPropagation()}
       >
-          <div className="glass-panel p-2 rounded-2xl flex items-center gap-2 shadow-glass-hover bg-white/80 backdrop-blur-xl border border-white/60">
+          <div className="glass-panel p-2 rounded-2xl flex items-center gap-2 shadow-glass-hover bg-white/80 backdrop-blur-xl">
               <input 
                   type="text" 
                   className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono"
@@ -831,7 +831,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const renderImageNode = (item: ImageItem) => (
       <div 
-        className="relative group w-full h-full rounded-3xl shadow-glass hover:shadow-2xl transition-all duration-500 select-none bg-white overflow-hidden ring-1 ring-slate-100"
+        className="relative group w-full h-full rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-500 select-none bg-white overflow-hidden"
         onDoubleClick={(e) => {
             e.stopPropagation();
             setPreviewImage({ src: item.src });
@@ -847,11 +847,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           </div>
           
            <button 
-             className="absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-7 h-7 flex items-center justify-center rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 hover:bg-rose-50 border border-slate-100"
+             className="absolute -top-3 -right-3 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 hover:bg-rose-50"
              onClick={(e) => removeItem(item.id, e)}
              onMouseDown={e => e.stopPropagation()}
            >
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
            </button>
 
           {renderEditOverlay(
@@ -887,20 +887,20 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         >
             {isInput && (
                 <div className="absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50">
-                    <div className="flex items-center gap-1 p-1 bg-white rounded-xl shadow-glass-hover border border-slate-100">
+                    <div className="flex items-center gap-1 p-1.5 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50">
                         <button 
-                            className={`px-3 py-1.5 text-[10px] tracking-wider font-bold rounded-lg transition-all ${item.data.model === 'flux' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                            className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'flux' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                             onClick={() => updateItemData(item.id, { model: 'flux' })}
                         >
                             FLUX
                         </button>
                         <button 
-                            className={`px-3 py-1.5 text-[10px] tracking-wider font-bold rounded-lg transition-all ${item.data.model === 'sdxl' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                            className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'sdxl' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                             onClick={() => updateItemData(item.id, { model: 'sdxl' })}
                         >
                             SDXL
                         </button>
-                        <div className="w-[1px] h-3 bg-slate-100 mx-2"></div>
+                        <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
                         
                         <div className="relative flex items-center gap-1 px-2 size-menu-container">
                             <button 
@@ -914,12 +914,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             </button>
 
                             {activeSizeMenuId === item.id && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-xl shadow-xl border border-slate-100 p-2 z-[60] min-w-[160px] animate-fade-in flex flex-col gap-1 origin-bottom">
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-[60] min-w-[160px] animate-fade-in flex flex-col gap-1 origin-bottom">
                                     <div className="text-[9px] font-bold text-slate-300 px-3 py-2 uppercase tracking-widest">Presets</div>
                                     {SIZE_PRESETS.map(preset => (
                                         <button
                                             key={preset.label}
-                                            className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 rounded-lg hover:text-slate-900 transition-colors flex justify-between items-center group"
+                                            className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 rounded-xl hover:text-slate-900 transition-colors flex justify-between items-center group"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 updateItemData(item.id, { width: preset.w, height: preset.h });
@@ -937,15 +937,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 </div>
             )}
 
-            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-2xl transition-all duration-500 relative ring-1 ring-white/50 ${item.data.isGenerating ? 'ring-2 ring-blue-500/30 shadow-blue-500/10' : ''}`}>
+            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-glass-hover transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/30' : ''}`}>
                 
                 {item.data.isGenerating && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md z-20 flex flex-col items-center justify-center">
-                        <div className="relative w-16 h-16">
-                            <div className="absolute inset-0 border-2 border-slate-100 rounded-full"></div>
-                            <div className="absolute inset-0 border-2 border-slate-900 rounded-full border-t-transparent animate-spin"></div>
-                        </div>
-                        <span className="mt-4 text-xs font-mono font-bold text-slate-900 tracking-widest uppercase">{item.data.progress}% Processing</span>
+                    <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-20 flex flex-col items-center justify-center">
+                        <div className="w-12 h-12 border-2 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6"></div>
+                        <span className="text-xs font-mono font-medium text-slate-400 tracking-widest uppercase">{item.data.progress}% Processing</span>
                     </div>
                 )}
 
@@ -953,8 +950,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     <div className="w-full h-full p-8 flex flex-col items-center justify-center">
                          <textarea 
                             rows={6}
-                            className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-200 break-words ${getAdaptiveFontSize(item.data.prompt)}`}
-                            placeholder={item.data.model === 'flux' ? "What can I create for you?" : "SDXL Prompt..."}
+                            className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-200 break-words ${getAdaptiveFontSize(item.data.prompt)}`}
+                            placeholder={item.data.model === 'flux' ? "Type to create..." : "SDXL Prompt..."}
                             value={item.data.prompt}
                             onChange={(e) => updateItemData(item.id, { prompt: e.target.value })}
                         />
@@ -999,7 +996,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                     e.stopPropagation();
                                     executeGeneration(item.id);
                                 }}
-                                className="bg-white/90 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all border border-white/50"
+                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
                                 title="Re-generate"
                              >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
@@ -1011,7 +1008,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                     e.stopPropagation();
                                     updateItemData(item.id, { mode: 'input' });
                                 }}
-                                className="bg-white/90 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all border border-white/50"
+                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
                                 title="Edit Prompt"
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -1021,7 +1018,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             <a 
                                 href={item.data.resultImage} 
                                 download={`gen-${item.id}.png`}
-                                className="bg-white/90 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all border border-white/50"
+                                className="bg-white/80 text-slate-700 p-2.5 rounded-xl backdrop-blur-md shadow-lg hover:bg-white hover:scale-105 transition-all"
                                 onClick={e => e.stopPropagation()}
                                 title="Download"
                             >
@@ -1036,7 +1033,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 <div className="absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50">
                     <button 
                         onClick={() => executeGeneration(item.id)}
-                        className="bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl shadow-slate-900/30 text-[10px] font-bold tracking-[0.2em] hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase border border-slate-800"
+                        className="bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl shadow-slate-900/20 text-xs font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"
                     >
                         <span>Generate</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -1052,12 +1049,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
       return (
         <div 
-            className="w-full h-full flex flex-col p-6 glass-panel rounded-3xl shadow-glass hover:shadow-2xl transition-all duration-300 animate-fade-in ring-1 ring-white/60"
+            className="w-full h-full flex flex-col p-6 glass-panel rounded-3xl shadow-glass hover:shadow-glass-hover transition-all duration-300 animate-fade-in"
             onMouseDown={e => e.stopPropagation()}
         >
             <div className="flex justify-between items-center mb-6">
-                <span className="text-[9px] font-bold tracking-widest px-2 py-1 bg-slate-100 text-slate-500 rounded uppercase">AI Editor</span>
-                <div className="text-[9px] font-mono text-slate-300">ID-{item.id.substr(0,4)}</div>
+                <span className="text-[10px] font-bold tracking-widest px-2 py-1 bg-slate-100 text-slate-600 rounded uppercase">Editor</span>
+                <div className="text-[10px] font-mono text-slate-300">ID-{item.id.substr(0,4)}</div>
             </div>
 
             <div className="mb-6">
@@ -1070,7 +1067,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         </button>
                     </div>
                 ) : (
-                    <div className="h-24 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center hover:border-slate-300 transition-colors bg-slate-50/30">
+                    <div className="h-24 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center hover:border-slate-300 transition-colors">
                         <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-2">Connect Source</span>
                         <div className="flex gap-1">
                             {items.filter(i => i.type === 'image').slice(0, 3).map(img => (
@@ -1098,7 +1095,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
             <div className="mt-6">
                 {item.data.isGenerating ? (
-                     <div className="h-12 w-full bg-slate-100 rounded-xl overflow-hidden relative">
+                     <div className="h-10 w-full bg-slate-100 rounded-xl overflow-hidden relative">
                          <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-500 tracking-widest z-10">
                              PROCESSING {item.data.progress}%
                          </div>
@@ -1107,7 +1104,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                  ) : (
                      <Button 
                         onClick={() => executeGeneration(item.id)} 
-                        className="py-4 text-[10px] tracking-[0.2em] uppercase bg-slate-900 text-white hover:bg-black transition-all hover:scale-[1.02] active:scale-[0.98] w-full rounded-xl font-bold shadow-lg shadow-slate-900/10" 
+                        className="py-3 text-xs tracking-widest uppercase bg-slate-100 text-slate-800 hover:bg-slate-900 hover:text-white transition-colors w-full rounded-xl font-bold shadow-sm" 
                         disabled={!item.data.targetId}
                     >
                         Apply Edit
@@ -1151,9 +1148,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   {items.map(item => (
                       <div
                         key={item.id}
-                        className={`absolute group transition-all duration-500 rounded-3xl ${
+                        className={`absolute group transition-shadow duration-500 rounded-3xl ${
                             selectedIds.has(item.id) 
-                            ? 'shadow-2xl ring-2 ring-blue-500/50 z-20 scale-[1.01]' 
+                            ? 'shadow-2xl ring-1 ring-blue-500/50 z-20' 
                             : activeItemId === item.id 
                                 ? 'shadow-xl z-10' 
                                 : ''
@@ -1169,11 +1166,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       >
                            {/* Simplified Remove Button (Only visible on hover/select) */}
                            <button 
-                             className={`absolute -top-3 -right-3 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-lg opacity-0 transition-all duration-200 hover:scale-110 hover:bg-rose-50 border border-slate-100 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100' : 'group-hover:opacity-100'}`}
+                             className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-md opacity-0 transition-all duration-200 hover:scale-110 hover:bg-rose-50 ${activeItemId === item.id || selectedIds.has(item.id) ? 'opacity-100' : 'group-hover:opacity-100'}`}
                              onClick={(e) => removeItem(item.id, e)}
                              onMouseDown={e => e.stopPropagation()}
                           >
-                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                           </button>
 
                           {item.type === 'image' && renderImageNode(item as ImageItem)}
@@ -1184,8 +1181,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   
                   {items.length === 0 && (
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center mix-blend-multiply">
-                          <h1 className="text-5xl font-extralight text-slate-900/10 tracking-tight mb-4">ComfyUI Studio</h1>
-                          <p className="text-xs font-bold text-slate-900/20 tracking-[0.5em] uppercase">Canvas Empty</p>
+                          <h1 className="text-4xl font-light text-slate-900/10 tracking-tight mb-2">ComfyUI Studio</h1>
+                          <p className="text-sm font-mono text-slate-900/20 tracking-widest uppercase">Canvas Empty</p>
                       </div>
                   )}
               </div>
@@ -1205,12 +1202,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
           {/* Minimalist Server Config */}
           <div className="absolute top-6 left-6 group z-50">
-               <div className="flex items-center gap-2 bg-white/60 backdrop-blur-md pl-2 pr-1 py-1.5 rounded-full border border-white/40 shadow-sm transition-all hover:bg-white hover:shadow-md hover:scale-105">
-                   <div className={`w-2 h-2 rounded-full ml-1 ${serverUrl ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-red-400'}`}></div>
+               <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md pl-3 pr-1 py-1 rounded-full border border-white/40 shadow-sm transition-all hover:bg-white hover:shadow-md">
+                   <div className={`w-2 h-2 rounded-full ${serverUrl ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
                    <input 
                     value={serverUrl} 
                     onChange={e => setServerUrl(e.target.value)}
-                    className="bg-transparent border-none text-[10px] font-mono font-medium text-slate-500 w-24 focus:w-56 transition-all focus:outline-none placeholder:text-slate-300"
+                    className="bg-transparent border-none text-[10px] font-mono text-slate-500 w-24 focus:w-48 transition-all focus:outline-none placeholder:text-slate-300"
                     placeholder="Server URL"
                    />
                </div>
@@ -1218,40 +1215,40 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
           {/* Clean Zoom Controls */}
           <div className="absolute bottom-8 left-8 flex gap-3 z-50">
-               <div className="glass-panel p-1.5 rounded-full flex gap-1 shadow-lg bg-white/80 border border-white/60">
-                  <button className="w-9 h-9 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
-                  <span className="flex items-center justify-center w-14 text-[10px] font-mono font-medium text-slate-400 select-none">{Math.round(view.scale * 100)}%</span>
-                  <button className="w-9 h-9 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+               <div className="glass-panel p-1 rounded-full flex gap-1 shadow-lg bg-white/80">
+                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                  <span className="flex items-center justify-center w-12 text-[10px] font-mono text-slate-400">{Math.round(view.scale * 100)}%</span>
+                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
                </div>
                <button 
-                className="w-12 h-12 bg-white rounded-full text-slate-600 hover:text-slate-900 hover:shadow-xl hover:scale-110 transition-all shadow-md flex items-center justify-center border border-slate-100"
+                className="w-10 h-10 bg-white rounded-full text-slate-600 hover:text-slate-900 hover:shadow-lg transition-all shadow-md flex items-center justify-center"
                 onClick={() => setView({ x: 0, y: 0, scale: 1 })}
                >
-                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
                </button>
           </div>
 
           {/* Elegant FAB */}
           <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-row items-center gap-6 group">
-               <button className="w-16 h-16 bg-slate-900 rounded-2xl shadow-2xl shadow-slate-900/30 flex items-center justify-center text-white transition-all duration-500 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20 border border-white/10 ring-4 ring-white/20">
-                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+               <button className="w-14 h-14 bg-slate-900 rounded-2xl shadow-2xl shadow-slate-900/30 flex items-center justify-center text-white transition-all duration-500 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
+                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                </button>
 
-               <div className="flex flex-col gap-4 items-start opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-8 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
+               <div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
                    <button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2">
-                       <div className="w-12 h-12 bg-white rounded-2xl shadow-xl flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-50">
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+                       <div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
                        </div>
-                       <span className="text-[10px] font-bold tracking-wider text-slate-500 bg-white/80 backdrop-blur px-4 py-2 rounded-xl shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0 uppercase">Text to Image</span>
+                       <span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Text to Image</span>
                    </button>
                    
                    <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
                    
                    <label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2">
-                       <div className="w-12 h-12 bg-white rounded-2xl shadow-xl flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-50">
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                       <div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                        </div>
-                       <span className="text-[10px] font-bold tracking-wider text-slate-500 bg-white/80 backdrop-blur px-4 py-2 rounded-xl shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0 uppercase">Upload Image</span>
+                       <span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Upload Image</span>
                    </label>
                </div>
           </div>
