@@ -1326,7 +1326,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           {/* Prompt Info Panel (Sidecar) */}
           {item.generationParams?.prompt && (
              <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
-                 <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden">
+                 <div 
+                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
+                    onWheel={(e) => e.stopPropagation()}
+                 >
                      <div className="p-4 overflow-y-auto custom-scrollbar">
                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
                          <p 
@@ -1467,7 +1470,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             {/* START: New Info Panel */}
             {item.data.prompt && (
              <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
-                 <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden">
+                 <div 
+                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
+                    onWheel={(e) => e.stopPropagation()}
+                 >
                      <div className="p-4 overflow-y-auto custom-scrollbar">
                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
                          <p 
