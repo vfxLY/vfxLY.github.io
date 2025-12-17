@@ -17,7 +17,7 @@ const FluxTab: React.FC<FluxTabProps> = ({ serverUrl, setServerUrl }) => {
 (Default long prompt truncated for brevity)`);
   const [width, setWidth] = useState(1280);
   const [height, setHeight] = useState(720);
-  const [steps, setSteps] = useState(10);
+  const [steps, setSteps] = useState(9);
   const [enableLora, setEnableLora] = useState(true);
   
   const [status, setStatus] = useState<GenerationStatus>({

@@ -610,7 +610,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               negPrompt: '',
               width: 1024,
               height: 1024,
-              steps: 20,
+              steps: 9,
               cfg: 3.5,
               isGenerating: false,
               progress: 0,
