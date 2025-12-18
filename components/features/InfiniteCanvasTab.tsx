@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
 import Button from '../ui/Button';
+import ImageEditor from './ImageEditor';
 import { 
   ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage, getLogs, parseConsoleProgress 
 } from '../../services/api';
@@ -154,8 +155,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   // Touch Tracking
   const lastPinchDistRef = useRef<number | null>(null);
 
-  // Preview Image State
+  // Preview / Editor State
   const [previewImage, setPreviewImage] = useState<{ src: string; dims?: { w: number; h: number } } | null>(null);
+  const [editingImage, setEditingImage] = useState<{ id: string; src: string; originalSrc: string } | null>(null);
 
   // Z-Index Management
   const [topZ, setTopZ] = useState(10);
@@ -174,25 +176,56 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     return 'text-base leading-relaxed'; // Standard readable size for long descriptions
   };
 
-  const copyPromptToActiveNode = (text: string) => {
-    if (!activeItemId) return;
+  /**
+   * Smart Prompt Copy/Input Logic
+   * 1. Updates the edit prompt of the source node (so "Modify this image" is filled).
+   * 2. Updates the main prompt of the active generator (so "Generate" is ready).
+   */
+  const copyPromptToActiveNode = useCallback((text: string, sourceNodeId?: string) => {
+    setItems(prev => {
+        // Update editPrompt for the source node
+        const itemsWithEdit = prev.map(item => {
+            if (item.id === sourceNodeId) {
+                if (item.type === 'image') return { ...item, editPrompt: text };
+                if (item.type === 'generator') return { ...item, data: { ...item.data, editPrompt: text } };
+            }
+            return item;
+        });
 
-    setItems(prev => prev.map(item => {
-        if (item.id === activeItemId && item.type === 'generator') {
-             // It is a generator
-             const genItem = item as GeneratorItem;
-             return {
-                 ...item,
-                 data: {
-                     ...genItem.data,
-                     prompt: text,
-                     mode: 'input' // Switch to input mode to show the updated prompt
-                 }
-             };
+        // Determine target generator for main prompt
+        let targetGenId = activeItemId;
+        let activeItem = itemsWithEdit.find(i => i.id === targetGenId);
+        
+        if (!activeItem || activeItem.type !== 'generator') {
+            const firstGen = itemsWithEdit.find(i => i.type === 'generator');
+            if (firstGen) targetGenId = firstGen.id;
         }
-        return item;
-    }));
-  };
+
+        if (targetGenId) {
+            return itemsWithEdit.map(item => {
+                if (item.id === targetGenId && item.type === 'generator') {
+                    return {
+                        ...item,
+                        data: {
+                            ...item.data,
+                            prompt: text,
+                            mode: 'input' // Switch back to input if it was in result mode
+                        }
+                    };
+                }
+                return item;
+            });
+        }
+        
+        return itemsWithEdit;
+    });
+
+    // Automatically focus/select the source node so the user sees the filled "Modify this image" box
+    if (sourceNodeId) {
+        setActiveItemId(sourceNodeId);
+        setSelectedIds(new Set([sourceNodeId]));
+    }
+  }, [activeItemId]);
 
   // --- Actions ---
   
@@ -285,8 +318,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
         if (e.code === 'Space') setIsSpacePressed(true);
-        if (e.key === 'Escape' && previewImage) {
-            setPreviewImage(null);
+        if (e.key === 'Escape') {
+            if (previewImage) setPreviewImage(null);
+            if (editingImage) setEditingImage(null);
             return;
         }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
@@ -319,7 +353,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedIds, items, clipboard, previewImage]);
+  }, [selectedIds, items, clipboard, previewImage, editingImage]);
 
   const handleWheel = (e: WheelEvent) => {
     if ((e.target as HTMLElement).closest('textarea')) return;
@@ -378,6 +412,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const x = e.clientX - rect.left;
+                const x2 = e.clientX - rect.left; // Added just to satisfy some linters or keep structure
                 const y = e.clientY - rect.top;
                 setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
             }
@@ -627,7 +662,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 width: finalWidth,
                 height: finalHeight,
                 zIndex: topZ + 1,
-                src
+                src,
+                history: [src],
+                historyIndex: 0
             };
             setTopZ(prev => prev + 1);
             setItems(prev => [...prev, newItem]);
@@ -733,7 +770,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 width: finalWidth,
                 height: finalHeight,
                 zIndex: topZ + 1,
-                src
+                src,
+                history: [src],
+                historyIndex: 0
             };
             setTopZ(prev => prev + 1);
             setItems(prev => [...prev, newItem]);
@@ -793,6 +832,29 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       }));
   };
 
+  const removeImageVersion = (itemId: string, index: number, e: MouseEvent) => {
+      e.stopPropagation();
+      setItems(prev => prev.map(item => {
+          if (item.id === itemId && item.type === 'image') {
+              const imgItem = item as ImageItem;
+              const history = imgItem.history || [imgItem.src];
+              if (history.length <= 1) return imgItem;
+              
+              const newHistory = history.filter((_, i) => i !== index);
+              let newIndex = imgItem.historyIndex ?? (history.length - 1);
+              if (newIndex >= index) newIndex = Math.max(0, newIndex - 1);
+              
+              return {
+                  ...imgItem,
+                  history: newHistory,
+                  historyIndex: newIndex,
+                  src: newHistory[newIndex]
+              };
+          }
+          return item;
+      }));
+  };
+
   const switchGeneratorVersion = (itemId: string, index: number) => {
       setItems(prev => prev.map(item => {
           if (item.id === itemId && item.type === 'generator') {
@@ -810,6 +872,32 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       }
                   };
               }
+          }
+          return item;
+      }));
+  };
+
+  const removeGeneratorVersion = (itemId: string, index: number, e: MouseEvent) => {
+      e.stopPropagation();
+      setItems(prev => prev.map(item => {
+          if (item.id === itemId && item.type === 'generator') {
+              const genItem = item as GeneratorItem;
+              const history = genItem.data.history || (genItem.data.resultImage ? [genItem.data.resultImage] : []);
+              if (history.length <= 1) return genItem;
+              
+              const newHistory = history.filter((_, i) => i !== index);
+              let newIndex = genItem.data.historyIndex ?? (history.length - 1);
+              if (newIndex >= index) newIndex = Math.max(0, newIndex - 1);
+              
+              return {
+                  ...genItem,
+                  data: {
+                      ...genItem.data,
+                      history: newHistory,
+                      historyIndex: newIndex,
+                      resultImage: newHistory[newIndex]
+                  }
+              };
           }
           return item;
       }));
@@ -1132,6 +1220,43 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       }
   };
 
+  const handleEditorSave = (newSrc: string) => {
+    if (!editingImage) return;
+    const itemId = editingImage.id;
+    
+    setItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        if (item.type === 'image') {
+          const imgItem = item as ImageItem;
+          const oldHistory = imgItem.history || [imgItem.src];
+          const newHistory = [...oldHistory, newSrc];
+          return { 
+              ...imgItem, 
+              src: newSrc,
+              history: newHistory,
+              historyIndex: newHistory.length - 1
+          } as ImageItem;
+        } else if (item.type === 'generator') {
+          const genItem = item as GeneratorItem;
+          const oldHistory = genItem.data.history || (genItem.data.resultImage ? [genItem.data.resultImage] : []);
+          const newHistory = [...oldHistory, newSrc];
+          return { 
+              ...genItem, 
+              data: { 
+                  ...genItem.data, 
+                  resultImage: newSrc,
+                  history: newHistory,
+                  historyIndex: newHistory.length - 1
+              } 
+          } as GeneratorItem;
+        }
+      }
+      return item;
+    }));
+    
+    setEditingImage(null);
+  };
+
   const renderConnections = () => {
       const connections: React.ReactElement[] = [];
       const drawnConnections = new Set<string>();
@@ -1323,12 +1448,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         className="relative group w-full h-full select-none"
         onDoubleClick={(e) => {
             e.stopPropagation();
-            setPreviewImage({ src: item.src });
+            const originalSrc = item.history && item.history.length > 0 ? item.history[0] : item.src;
+            setEditingImage({ id: item.id, src: item.src, originalSrc });
         }}
       >
           {/* Prompt Info Panel (Sidecar) */}
           {item.generationParams?.prompt && (
-             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
+             <div 
+                className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto"
+                onMouseDown={e => e.stopPropagation()}
+             >
                  <div 
                     className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
                     onWheel={(e) => e.stopPropagation()}
@@ -1339,9 +1468,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text cursor-pointer hover:text-blue-600 hover:bg-blue-50/50 rounded p-1 -ml-1 transition-all active:scale-95"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                copyPromptToActiveNode(item.generationParams!.prompt);
+                                copyPromptToActiveNode(item.generationParams!.prompt, item.id);
                             }}
-                            title="Click to copy to active generator input"
+                            title="Click to copy to active generator AND this node's edit box"
                          >
                             {item.generationParams.prompt}
                          </p>
@@ -1377,18 +1506,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     onTouchStart={e => e.stopPropagation()}
                   >
                     {item.history.map((histSrc, idx) => (
-                        <button
-                            key={idx}
-                            onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }}
-                            className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
-                                (item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx 
-                                ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
-                                : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
-                            }`}
-                            title={`Version ${idx + 1}`}
-                        >
-                            <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
-                        </button>
+                        <div key={idx} className="relative group/thumb">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }}
+                                className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                    (item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx 
+                                    ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                    : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
+                                }`}
+                                title={`Version ${idx + 1}`}
+                            >
+                                <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                            </button>
+                            <button 
+                                onClick={(e) => removeImageVersion(item.id, idx, e)}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-md hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"
+                            >
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                        </div>
                     ))}
                 </div>
               )}
@@ -1472,7 +1608,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         >
             {/* START: New Info Panel */}
             {item.data.prompt && (
-             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto">
+             <div 
+                className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto"
+                onMouseDown={e => e.stopPropagation()}
+             >
                  <div 
                     className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
                     onWheel={(e) => e.stopPropagation()}
@@ -1483,9 +1622,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap font-mono select-text cursor-pointer hover:text-blue-600 hover:bg-blue-50/50 rounded p-1 -ml-1 transition-all active:scale-95"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                copyPromptToActiveNode(item.data.prompt);
+                                copyPromptToActiveNode(item.data.prompt, item.id);
                             }}
-                            title="Click to copy to active generator input"
+                            title="Click to copy to active generator AND this node's edit box"
                          >
                             {item.data.prompt}
                          </p>
@@ -1587,18 +1726,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 onTouchStart={e => e.stopPropagation()}
                             >
                                 {item.data.history.map((histSrc, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
-                                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
-                                            (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
-                                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
-                                            : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'
-                                        }`}
-                                        title={`Version ${idx + 1}`}
-                                    >
-                                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
-                                    </button>
+                                    <div key={idx} className="relative group/thumb">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
+                                            className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                                (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
+                                                ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                                : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'
+                                            }`}
+                                            title={`Version ${idx + 1}`}
+                                        >
+                                            <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                                        </button>
+                                        <button 
+                                            onClick={(e) => removeGeneratorVersion(item.id, idx, e)}
+                                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-md hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"
+                                        >
+                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -1639,7 +1785,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         className="w-full h-full relative group/image bg-white overflow-hidden"
                         onDoubleClick={(e) => {
                             e.stopPropagation();
-                            if(item.data.resultImage) setPreviewImage({ src: item.data.resultImage });
+                            if(item.data.resultImage) {
+                                const originalSrc = item.data.history && item.data.history.length > 0 ? item.data.history[0] : (item.data.resultImage || '');
+                                setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc });
+                            }
                         }}
                     >
                          {/* History Thumbnails (Result Mode) */}
@@ -1650,18 +1799,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 onTouchStart={e => e.stopPropagation()}
                             >
                                 {item.data.history.map((histSrc, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
-                                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
-                                            (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
-                                            ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
-                                            : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'
-                                        }`}
-                                        title={`Version ${idx + 1}`}
-                                    >
-                                        <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
-                                    </button>
+                                    <div key={idx} className="relative group/thumb">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }}
+                                            className={`w-10 h-10 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${
+                                                (item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx 
+                                                ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' 
+                                                : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'
+                                            }`}
+                                            title={`Version ${idx + 1}`}
+                                        >
+                                            <img src={histSrc} className="w-full h-full object-cover pointer-events-none" />
+                                        </button>
+                                        <button 
+                                            onClick={(e) => removeGeneratorVersion(item.id, idx, e)}
+                                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-md hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"
+                                        >
+                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -1930,6 +2086,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                </div>
           </div>
           
+          {/* Image Editor */}
+          {editingImage && (
+             <ImageEditor 
+                src={editingImage.src} 
+                originalSrc={editingImage.originalSrc}
+                onSave={handleEditorSave} 
+                onCancel={() => setEditingImage(null)} 
+             />
+          )}
+
           {/* Lightbox Preview */}
           {previewImage && (
              <div 
