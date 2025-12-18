@@ -1,3 +1,4 @@
+
 import { ComfyWorkflow } from '../types';
 
 export const generateFluxWorkflow = (
@@ -43,7 +44,15 @@ export const generateEditWorkflow = (
     "3": { "inputs": { "seed": seed, "steps": steps, "cfg": cfg, "sampler_name": "euler", "scheduler": "simple", "denoise": 1, "model": ["75", 0], "positive": ["111", 0], "negative": ["110", 0], "latent_image": ["88", 0] }, "class_type": "KSampler", "_meta": { "title": "K采样器" } },
     "8": { "inputs": { "samples": ["3", 0], "vae": ["39", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE解码" } },
     "37": { "inputs": { "unet_name": "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "weight_dtype": "default" }, "class_type": "UNETLoader", "_meta": { "title": "UNet加载器" } },
-    "38": { "inputs": { "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image", "device": "default" }, "class_type": "CLIPLoader", "_meta": { "title": "加载CLIP" } },
+    "38": { 
+      "inputs": { 
+        "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", 
+        "type": "qwen_image", 
+        "device": "cpu" 
+      }, 
+      "class_type": "CLIPLoader", 
+      "_meta": { "title": "加载CLIP" } 
+    },
     "39": { "inputs": { "vae_name": "qwen_image_vae.safetensors" }, "class_type": "VAELoader", "_meta": { "title": "加载VAE" } },
     "66": { "inputs": { "shift": 3, "model": ["447", 0] }, "class_type": "ModelSamplingAuraFlow", "_meta": { "title": "采样算法（AuraFlow）" } },
     "75": { "inputs": { "strength": 1, "model": ["66", 0] }, "class_type": "CFGNorm", "_meta": { "title": "CFG归一化" } },
