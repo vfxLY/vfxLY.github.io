@@ -162,6 +162,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   // Z-Index Management
   const [topZ, setTopZ] = useState(10);
 
+  // Copy Feedback state
+  const [copyFeedbackId, setCopyFeedbackId] = useState<string | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<number | null>(null);
 
@@ -180,8 +183,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
    * Smart Prompt Copy/Input Logic
    * 1. Updates the edit prompt of the source node (so "Modify this image" is filled).
    * 2. Updates the main prompt of the active generator (so "Generate" is ready).
+   * 3. Copies text to clipboard and shows feedback.
    */
-  const copyPromptToActiveNode = useCallback((text: string, sourceNodeId?: string) => {
+  const copyPromptToActiveNode = useCallback((text: string, sourceNodeId: string) => {
+    // Write to system clipboard
+    navigator.clipboard.writeText(text).catch(() => {});
+
     setItems(prev => {
         // Update editPrompt for the source node
         const itemsWithEdit = prev.map(item => {
@@ -220,11 +227,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         return itemsWithEdit;
     });
 
-    // Automatically focus/select the source node so the user sees the filled "Modify this image" box
-    if (sourceNodeId) {
-        setActiveItemId(sourceNodeId);
-        setSelectedIds(new Set([sourceNodeId]));
-    }
+    // Automatically focus/select the source node
+    setActiveItemId(sourceNodeId);
+    setSelectedIds(new Set([sourceNodeId]));
+
+    // Show feedback
+    setCopyFeedbackId(sourceNodeId);
+    setTimeout(() => setCopyFeedbackId(null), 2000);
   }, [activeItemId]);
 
   // --- Actions ---
@@ -1459,9 +1468,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 onMouseDown={e => e.stopPropagation()}
              >
                  <div 
-                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
+                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden relative"
                     onWheel={(e) => e.stopPropagation()}
                  >
+                     {/* Feedback Tooltip */}
+                     {copyFeedbackId === item.id && (
+                        <div className="absolute top-2 right-2 bg-blue-500 text-white text-[8px] font-bold px-2 py-1 rounded-full animate-bounce shadow-lg z-[60]">
+                           已复制 / 填入
+                        </div>
+                     )}
+
                      <div className="p-4 overflow-y-auto custom-scrollbar">
                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
                          <p 
@@ -1470,7 +1486,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 e.stopPropagation();
                                 copyPromptToActiveNode(item.generationParams!.prompt, item.id);
                             }}
-                            title="Click to copy to active generator AND this node's edit box"
+                            title="点击复制提示词并填入编辑框"
                          >
                             {item.generationParams.prompt}
                          </p>
@@ -1613,9 +1629,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 onMouseDown={e => e.stopPropagation()}
              >
                  <div 
-                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden"
+                    className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden relative"
                     onWheel={(e) => e.stopPropagation()}
                  >
+                     {/* Feedback Tooltip */}
+                     {copyFeedbackId === item.id && (
+                        <div className="absolute top-2 right-2 bg-blue-500 text-white text-[8px] font-bold px-2 py-1 rounded-full animate-bounce shadow-lg z-[60]">
+                           已复制 / 填入
+                        </div>
+                     )}
+
                      <div className="p-4 overflow-y-auto custom-scrollbar">
                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Prompt</div>
                          <p 
@@ -1624,7 +1647,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 e.stopPropagation();
                                 copyPromptToActiveNode(item.data.prompt, item.id);
                             }}
-                            title="Click to copy to active generator AND this node's edit box"
+                            title="点击复制提示词并填入编辑框"
                          >
                             {item.data.prompt}
                          </p>
