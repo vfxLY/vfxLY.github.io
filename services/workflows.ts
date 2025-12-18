@@ -67,6 +67,91 @@ export const generateEditWorkflow = (
   };
 };
 
+/**
+ * SeedVR2 图像放大工作流
+ */
+export const generateUpscaleWorkflow = (imageFilename: string): ComfyWorkflow => {
+  return {
+    "10": {
+      "inputs": {
+        "seed": Math.floor(Math.random() * 1000000),
+        "resolution": 4096,
+        "max_resolution": 4096,
+        "batch_size": 1,
+        "uniform_batch_size": false,
+        "color_correction": "lab",
+        "temporal_overlap": 0,
+        "prepend_frames": 0,
+        "input_noise_scale": 0,
+        "latent_noise_scale": 0,
+        "offload_device": "cpu",
+        "enable_debug": false,
+        "image": ["21", 0],
+        "dit": ["14", 0],
+        "vae": ["13", 0]
+      },
+      "class_type": "SeedVR2VideoUpscaler",
+      "_meta": { "title": "SeedVR2 Video Upscaler" }
+    },
+    "13": {
+      "inputs": {
+        "model": "ema_vae_fp16.safetensors",
+        "device": "cuda:0",
+        "encode_tiled": true,
+        "encode_tile_size": 1024,
+        "encode_tile_overlap": 128,
+        "decode_tiled": true,
+        "decode_tile_size": 1024,
+        "decode_tile_overlap": 128,
+        "tile_debug": "false",
+        "offload_device": "cpu",
+        "cache_model": false
+      },
+      "class_type": "SeedVR2LoadVAEModel",
+      "_meta": { "title": "SeedVR2 Load VAE" }
+    },
+    "14": {
+      "inputs": {
+        "model": "seedvr2_ema_7b_sharp_fp16.safetensors",
+        "device": "cuda:0",
+        "blocks_to_swap": 36,
+        "swap_io_components": false,
+        "offload_device": "cpu",
+        "cache_model": false,
+        "attention_mode": "sdpa"
+      },
+      "class_type": "SeedVR2LoadDiTModel",
+      "_meta": { "title": "SeedVR2 Load DiT" }
+    },
+    "15": {
+      "inputs": {
+        "filename_prefix": "Upscale",
+        "images": ["10", 0]
+      },
+      "class_type": "SaveImage",
+      "_meta": { "title": "保存图像" }
+    },
+    "16": {
+      "inputs": { "image": imageFilename },
+      "class_type": "LoadImage",
+      "_meta": { "title": "加载图像" }
+    },
+    "17": {
+      "inputs": {
+        "image": ["16", 0],
+        "alpha": ["16", 1]
+      },
+      "class_type": "JoinImageWithAlpha",
+      "_meta": { "title": "合并图像Alpha" }
+    },
+    "21": {
+      "inputs": { "image": ["17", 0] },
+      "class_type": "FluxKontextImageScale",
+      "_meta": { "title": "FluxKontextImageScale" }
+    }
+  };
+};
+
 export const generateSdxlWorkflow = (
   positivePrompt: string,
   negativePrompt: string,
