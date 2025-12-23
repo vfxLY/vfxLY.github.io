@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
 import Button from '../ui/Button';
 import ImageEditor from './ImageEditor';
@@ -1389,6 +1388,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         className={`absolute bottom-6 left-6 right-20 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
         onMouseDown={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()} 
+        onWheel={e => e.stopPropagation()}
       >
           <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl">
               <input 
@@ -1451,7 +1451,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         <span className="text-xs font-mono font-medium text-slate-400 tracking-widest uppercase">{item.data.progress}% Processing</span>
                     </div>
                 )}
-                <div className="w-full h-full p-6 flex flex-col relative bg-white/50">
+                <div className="w-full h-full p-6 flex flex-col relative bg-white/50" onWheel={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-4">
                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Editor Node</span>
                          {item.data.targetId ? (
@@ -1533,6 +1533,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
              <div 
                 className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto"
                 onMouseDown={e => e.stopPropagation()}
+                onWheel={e => e.stopPropagation()}
              >
                  <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden relative">
                      {copyFeedbackId === item.id && (
@@ -1561,7 +1562,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               )}
               
               {(item.history && item.history.length > 1) && (
-                  <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                  <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                     {item.history.map((histSrc, idx) => (
                         <div key={idx} className="relative group/thumb">
                             <button onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${(item.historyIndex ?? (item.history ? item.history.length - 1 : 0)) === idx ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' : 'border-white/80 opacity-60 hover:opacity-100 hover:border-white'}`}><img src={histSrc} className="w-full h-full object-cover pointer-events-none" /></button>
@@ -1624,7 +1625,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA') e.stopPropagation(); }} onTouchStart={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA') e.stopPropagation(); }}>
             {item.data.prompt && (
-             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto" onMouseDown={e => e.stopPropagation()}>
+             <div className="absolute top-0 left-full h-full pl-4 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                  <div className="w-64 max-h-full flex flex-col bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 origin-left scale-90 group-hover:scale-100 transition-transform duration-300 overflow-hidden relative">
                      {copyFeedbackId === item.id && (<div className="absolute top-2 right-2 bg-blue-500 text-white text-[8px] font-bold px-2 py-1 rounded-full animate-bounce shadow-lg z-[60]">已复制</div>)}
                      <div className="p-4 overflow-y-auto custom-scrollbar">
@@ -1650,7 +1651,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         <div className="relative flex items-center gap-1 px-2 size-menu-container">
                             <button className="text-[10px] font-bold text-slate-400 hover:text-slate-800 transition-colors flex items-center gap-1 uppercase tracking-wider" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
                             {activeSizeMenuId === item.id && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-[60] min-w-[160px] animate-fade-in flex flex-col gap-1 origin-bottom">
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-[60] min-w-[160px] animate-fade-in flex flex-col gap-1 origin-bottom" onWheel={e => e.stopPropagation()}>
                                     <div className="text-[9px] font-bold text-slate-300 px-3 py-2 uppercase tracking-widest">Presets</div>
                                     {SIZE_PRESETS.map(preset => (
                                         <button key={preset.label} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 rounded-xl hover:text-slate-900 transition-colors flex justify-between items-center group" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-medium">{preset.label}</span><span className="text-[9px] text-slate-300 font-mono group-hover:text-slate-500">{preset.w}×{preset.h}</span></button>
@@ -1673,7 +1674,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 {isInput ? (
                     <div className="w-full h-full p-8 flex flex-col items-center justify-center relative bg-white/50">
                         {(item.data.history && item.data.history.length > 0) && (
-                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.data.history.map((histSrc, idx) => (
                                     <div key={idx} className="relative group/thumb">
                                         <button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${(item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'}`}><img src={histSrc} className="w-full h-full object-cover pointer-events-none" /></button>
@@ -1698,7 +1699,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     /* Fix: use item.data.history[0] instead of item.history[0] since history is inside data for GeneratorItem */
                     <div className="w-full h-full relative group/image bg-white overflow-hidden" onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) { const originalSrc = item.data.history && item.data.history.length > 0 ? item.data.history[0] : (item.data.resultImage || ''); setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc }); } }}>
                         {(item.data.history && item.data.history.length > 1) && (
-                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.data.history.map((histSrc, idx) => (
                                     <div key={idx} className="relative group/thumb">
                                         <button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-200 hover:scale-110 flex-shrink-0 ${(item.data.historyIndex ?? (item.data.history ? item.data.history.length - 1 : 0)) === idx ? 'border-blue-500 ring-2 ring-blue-500/20 scale-105' : 'border-white/40 opacity-60 hover:opacity-100 hover:border-white'}`}><img src={histSrc} className="w-full h-full object-cover pointer-events-none" /></button>
