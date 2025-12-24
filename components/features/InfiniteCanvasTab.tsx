@@ -5,7 +5,7 @@ import ImageEditor from './ImageEditor';
 import { 
   ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage, getLogs, parseConsoleProgress 
 } from '../../services/api';
-import { generateFluxWorkflow, generateEditWorkflow, generateSdxlWorkflow, generateUpscaleWorkflow } from '../../services/workflows';
+import { generateFluxWorkflow, generateEditWorkflow, generateSdxlWorkflow, generateUpscaleWorkflow, generateBananaWorkflow } from '../../services/workflows';
 
 // --- Constants ---
 
@@ -23,6 +23,7 @@ const CLIPBOARD_MARKER = "COMFY_UI_PRO_INTERNAL_NODES";
 
 type ItemType = 'image' | 'generator' | 'editor';
 type ModelType = 'flux' | 'sdxl';
+type EditMode = 'qwen' | 'banana';
 
 // 记录每一张图生成的完整元数据
 interface HistoryEntry {
@@ -31,6 +32,7 @@ interface HistoryEntry {
   steps?: number;
   cfg?: number;
   model?: string;
+  editMode?: EditMode;
 }
 
 interface BaseItem {
@@ -51,6 +53,7 @@ interface ImageItem extends BaseItem {
   src: string;
   // Edit state
   editPrompt?: string;
+  editMode?: EditMode;
   isEditing?: boolean;
   editProgress?: number;
   // Upscale state
@@ -77,6 +80,7 @@ interface GeneratorItem extends BaseItem {
     mode: 'input' | 'result';
     // Edit state for result
     editPrompt?: string;
+    editMode?: EditMode;
     isEditing?: boolean;
     editProgress?: number;
     // Upscale state for result
@@ -808,7 +812,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const item = items.find(i => i.id === itemId) as ImageItem;
       if (!item || item.historyIndex < 0) return;
       const currentVer = item.history[item.historyIndex];
-      const sourceItem = items.find(i => i.id === item.parentId || i.id === itemId);
       
       const url = ensureHttps(serverUrl);
       if (!url) return;
@@ -819,7 +822,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           const file = await convertSrcToFile(src);
           const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId();
-          const workflow = generateEditWorkflow(currentVer.prompt, serverFileName, currentVer.steps || 20, currentVer.cfg || 2.5);
+          
+          let workflow;
+          if ((item.editMode || currentVer.editMode) === 'banana') {
+            workflow = generateBananaWorkflow(currentVer.prompt, serverFileName);
+          } else {
+            workflow = generateEditWorkflow(currentVer.prompt, serverFileName, currentVer.steps || 20, currentVer.cfg || 2.5);
+          }
+          
           const promptId = await queuePrompt(url, workflow, clientId);
 
           const checkStatus = async () => {
@@ -935,6 +945,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const url = ensureHttps(serverUrl);
       if (!url) return;
 
+      const currentMode = item.type === 'image' ? (item as ImageItem).editMode : (item as GeneratorItem).data.editMode;
+      const mode = currentMode || 'qwen';
+
       if (item.type === 'image') updateImageItem(itemId, { isEditing: true, editProgress: 0 });
       else if (item.type === 'generator') updateItemData(itemId, { isEditing: true, editProgress: 0 });
 
@@ -944,7 +957,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           const file = await convertSrcToFile(src);
           const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId();
-          const workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
+          
+          let workflow;
+          if (mode === 'banana') {
+            workflow = generateBananaWorkflow(prompt, serverFileName);
+          } else {
+            workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
+          }
+          
           const promptId = await queuePrompt(url, workflow, clientId);
 
           const checkStatus = async () => {
@@ -968,8 +988,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                       zIndex: topZ + 2, 
                                       parentId: item.id, 
                                       src: imgUrl,
-                                      history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5 }], 
-                                      historyIndex: 0
+                                      history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5, editMode: mode }], 
+                                      historyIndex: 0,
+                                      editMode: mode
                                   };
                                   setTopZ(prev => prev + 2);
                                   setItems(prev => [...prev, newItem]);
@@ -1066,7 +1087,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                               zIndex: topZ + 2,
                                               parentId: item.id, 
                                               src: imgUrl,
-                                              history: [{ src: imgUrl, prompt: item.data.prompt, steps: item.data.steps, cfg: item.data.cfg }],
+                                              history: [{ src: imgUrl, prompt: item.data.prompt, steps: (item as EditorItem).data.steps, cfg: (item as EditorItem).data.cfg }],
                                               historyIndex: 0
                                           };
                                           setTopZ(prev => prev + 2);
@@ -1082,7 +1103,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   }
                   const logs = await getLogs(url);
                   const parsed = parseConsoleProgress(logs);
-                  const currentProg = item.data.progress;
+                  const currentProg = item.type === 'generator' ? (item as GeneratorItem).data.progress : (item as EditorItem).data.progress;
                   const newProg = parsed > 0 ? parsed : Math.min(currentProg + 2, 95);
                   updateItemData(itemId, { progress: newProg });
                   setTimeout(checkStatus, 1000);
@@ -1103,13 +1124,26 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       if (item.id === itemId) {
         const currentPrompt = item.history[item.historyIndex]?.prompt || "Manually Edited";
         const newEntry = { src: newSrc, prompt: currentPrompt };
-        return { 
-            ...item, 
-            src: item.type === 'image' ? newSrc : item.src,
-            data: item.type === 'generator' ? { ...item.data, resultImage: newSrc } : (item as any).data,
+        
+        // Handling ImageItem
+        if (item.type === 'image') {
+          return {
+            ...item,
+            src: newSrc,
             history: [...item.history, newEntry],
             historyIndex: item.history.length
-        } as any;
+          };
+        }
+        
+        // Handling GeneratorItem
+        if (item.type === 'generator') {
+          return {
+            ...item,
+            data: { ...item.data, resultImage: newSrc },
+            history: [...item.history, newEntry],
+            historyIndex: item.history.length
+          };
+        }
       }
       return item;
     }));
@@ -1149,20 +1183,35 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       );
   };
 
-  const renderEditOverlay = (isEditing: boolean, progress: number, prompt: string | undefined, onPromptChange: (val: string) => void, onExecute: () => void) => (
+  const renderEditOverlay = (
+    itemId: string,
+    isEditing: boolean, 
+    progress: number, 
+    prompt: string | undefined, 
+    onPromptChange: (val: string) => void, 
+    onExecute: () => void,
+    currentMode: EditMode = 'qwen',
+    onModeChange: (m: EditMode) => void
+  ) => (
       <div 
         className={`absolute bottom-6 left-6 right-20 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
         onMouseDown={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()} 
         onWheel={e => e.stopPropagation()}
       >
-          <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl">
-              <input type="text" className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono" placeholder="Modify..." value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
-              <button onClick={onExecute} disabled={isEditing || !prompt} className="bg-slate-950 text-white rounded-xl w-8 h-8 flex items-center justify-center hover:bg-black transition-colors disabled:opacity-50 shadow-md">
-                  {isEditing ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
-              </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-1 bg-white/90 p-1 rounded-xl shadow-sm border border-slate-100 self-start">
+               <button onClick={() => onModeChange('qwen')} className={`px-3 py-1 text-[9px] font-bold rounded-lg transition-all ${currentMode === 'qwen' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>Qwen 2509</button>
+               <button onClick={() => onModeChange('banana')} className={`px-3 py-1 text-[9px] font-bold rounded-lg transition-all ${currentMode === 'banana' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>Banana Pro</button>
+            </div>
+            <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl">
+                <input type="text" className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono" placeholder="Modify..." value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
+                <button onClick={onExecute} disabled={isEditing || !prompt} className={`text-white rounded-xl w-8 h-8 flex items-center justify-center transition-colors disabled:opacity-50 shadow-md ${currentMode === 'banana' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-950 hover:bg-black'}`}>
+                    {isEditing ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
+                </button>
+            </div>
           </div>
-          {isEditing && <div className="absolute -top-3 left-0 w-full h-1 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${progress}%` }}></div></div>}
+          {isEditing && <div className="absolute -top-3 left-0 w-full h-1 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full transition-all duration-300 ${currentMode === 'banana' ? 'bg-indigo-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }}></div></div>}
       </div>
   );
 
@@ -1203,20 +1252,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
             <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-glass-hover transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/30' : ''}`}>
                 {item.data.isGenerating && <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-12 h-12 border-2 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-6"></div><span className="text-xs font-mono font-medium text-slate-400 tracking-widest uppercase">{item.data.progress}% Processing</span></div>}
-                <div className="w-full h-full p-6 flex flex-col relative bg-white/50" onWheel={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-between mb-4">
-                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Editor Node</span>
-                         {item.data.targetId ? <span className="text-[10px] text-green-500 font-mono font-bold flex items-center gap-1"><div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>Linked</span> : <span className="text-[10px] text-orange-400 font-mono font-bold flex items-center gap-1"><div className="w-1.5 h-1.5 bg-orange-400 rounded-full"></div>Unlinked</span>}
-                    </div>
-                    <textarea rows={4} className="w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-sm leading-relaxed tracking-tight font-sans transition-all duration-200 border-b border-transparent focus:border-slate-200" placeholder="Describe edits..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
-                    <div className="flex gap-4 mt-4 pt-4 border-t border-slate-100/50">
-                        <div className="flex-1"><label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Steps</label><input type="number" className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-blue-200 rounded-lg px-2 py-1 text-xs font-mono transition-all outline-none" value={item.data.steps} onChange={(e) => updateItemData(item.id, { steps: Number(e.target.value) })} /></div>
-                        <div className="flex-1"><label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">CFG</label><input type="number" className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-blue-200 rounded-lg px-2 py-1 text-xs font-mono transition-all outline-none" value={item.data.cfg} onChange={(e) => updateItemData(item.id, { cfg: Number(e.target.value) })} /></div>
-                    </div>
+                <div className="w-full h-full p-6 flex flex-col relative bg-white/50">
+                    <textarea className="w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-sm leading-relaxed tracking-tight font-sans transition-all duration-200 border-b border-transparent focus:border-slate-200" placeholder="Describe edits..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
                 </div>
             </div>
             <div className={`absolute top-full left-0 w-full flex justify-center pt-4 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-2 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} disabled={!item.data.targetId} className="bg-slate-900 text-white px-6 py-2 rounded-full shadow-xl shadow-slate-900/10 text-[10px] font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2 uppercase disabled:opacity-50 disabled:cursor-not-allowed"><span>Apply Edit</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
-            <button className={`absolute -top-1 -right-1 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             {renderResizeHandle(item.id)}
         </div>
       );
@@ -1241,7 +1281,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 </div>
               )}
               <div className="w-full h-full flex items-center justify-center bg-slate-50"><img src={item.src} alt="uploaded" className="max-w-full max-h-full object-contain pointer-events-none select-none" /></div>
-              {renderEditOverlay(!!item.isEditing, item.editProgress || 0, item.editPrompt, (val) => updateImageItem(item.id, { editPrompt: val }), () => executeEdit(item.id, item.editPrompt || ''))}
+              {renderEditOverlay(
+                  item.id, 
+                  !!item.isEditing, 
+                  item.editProgress || 0, 
+                  item.editPrompt, 
+                  (val) => updateImageItem(item.id, { editPrompt: val }), 
+                  () => executeEdit(item.id, item.editPrompt || ''),
+                  item.editMode,
+                  (m) => updateImageItem(item.id, { editMode: m })
+              )}
               <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                  {!item.isRegenerating && !item.isUpscaling && (
                     <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all group/upscale" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button>
@@ -1262,7 +1311,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       const currentEntry = !isInput && item.historyIndex >= 0 ? item.history[item.historyIndex] : null;
       
-      // 如果在结果模式，显示该结果图的 Prompt；如果在输入模式，显示输入框的 Prompt
       const displayPrompt = isInput ? item.data.prompt : (currentEntry?.prompt || item.data.prompt);
       const displaySteps = isInput ? item.data.steps : currentEntry?.steps;
       const displayCfg = isInput ? item.data.cfg : currentEntry?.cfg;
@@ -1316,7 +1364,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             </div>
                         )}
                         <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.data.resultImage} className="max-w-full max-h-full object-contain pointer-events-none select-none" alt="result" /></div>
-                        {renderEditOverlay(!!item.data.isEditing, item.data.editProgress || 0, item.data.editPrompt, (val) => updateItemData(item.id, { editPrompt: val }), () => executeEdit(item.id, item.data.editPrompt || ''))}
+                        {renderEditOverlay(
+                            item.id, 
+                            !!item.data.isEditing, 
+                            item.data.editProgress || 0, 
+                            item.data.editPrompt, 
+                            (val) => updateItemData(item.id, { editPrompt: val }), 
+                            () => executeEdit(item.id, item.data.editPrompt || ''),
+                            item.data.editMode,
+                            (m) => updateItemData(item.id, { editMode: m })
+                        )}
                         <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {!item.data.isGenerating && !item.data.isUpscaling && (
                                 <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-700 flex items-center justify-center hover:scale-105 hover:shadow-xl hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
