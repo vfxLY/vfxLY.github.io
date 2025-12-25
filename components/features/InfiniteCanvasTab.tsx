@@ -134,6 +134,7 @@ interface ResizeState {
 const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setServerUrl }) => {
   // --- State ---
   const [items, setItems] = useState<CanvasItem[]>([]);
+  const [undoStack, setUndoStack] = useState<CanvasItem[][]>([]);
   const [view, setView] = useState<ViewState>({ x: 0, y: 0, scale: 1 });
   
   // Selection State
@@ -161,6 +162,18 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const pollInterval = useRef<number | null>(null);
 
   // --- Helper Functions ---
+
+  const recordHistory = useCallback(() => {
+    setUndoStack(prev => [JSON.parse(JSON.stringify(items)), ...prev].slice(0, 50));
+  }, [items]);
+
+  const performUndo = useCallback(() => {
+    if (undoStack.length > 0) {
+      const lastState = undoStack[0];
+      setItems(lastState);
+      setUndoStack(prev => prev.slice(1));
+    }
+  }, [undoStack]);
 
   const getAdaptiveFontSize = (text: string) => {
     const len = text.length;
@@ -218,6 +231,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const pasteItems = useCallback(() => {
       if (clipboard.length === 0) return;
+      recordHistory();
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       clipboard.forEach(item => {
           minX = Math.min(minX, item.x);
@@ -272,7 +286,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const newSelectedIds = new Set(newItems.map(i => i.id));
       setSelectedIds(newSelectedIds);
       if (newItems.length === 1) setActiveItemId(newItems[0].id);
-  }, [clipboard, topZ, view]);
+  }, [clipboard, topZ, view, recordHistory]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -295,6 +309,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             if (editingImage) setEditingImage(null);
             return;
         }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            if (!(e.target as HTMLElement).matches('input, textarea')) {
+              e.preventDefault();
+              performUndo();
+            }
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
             if (selectedIds.size > 0 && !(e.target as HTMLElement).matches('input, textarea')) {
                 const selectedItems = items.filter(i => selectedIds.has(i.id));
@@ -306,6 +326,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         }
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
             if (!(e.target as HTMLElement).matches('input, textarea')) {
+                recordHistory();
                 setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
                 setSelectedIds(new Set());
                 setActiveItemId(null);
@@ -322,7 +343,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedIds, items, clipboard, previewImage, editingImage]);
+  }, [selectedIds, items, clipboard, previewImage, editingImage, performUndo, recordHistory]);
 
   const handleWheel = (e: WheelEvent) => {
     if ((e.target as HTMLElement).closest('textarea')) return;
@@ -344,6 +365,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const handleResizeStart = (e: MouseEvent, id: string) => {
       e.preventDefault();
       e.stopPropagation();
+      recordHistory();
       const item = items.find(i => i.id === id);
       if (item) {
           setResizeState({
@@ -531,6 +553,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           setActiveItemId(id);
       }
       if (!(e.target as HTMLElement).closest('input, textarea, button')) {
+        recordHistory();
         setDragMode('item');
         setIsDragging(true);
         setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
@@ -544,6 +567,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (!file.type.startsWith('image/')) return;
+      recordHistory();
       const reader = new FileReader();
       reader.onload = (ev) => {
         const src = ev.target?.result as string;
@@ -610,6 +634,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           }
       }
       if (!(e.target as HTMLElement).closest('input, textarea, button')) {
+        recordHistory();
         setDragMode('item');
         setIsDragging(true);
         setDragStart({ x: e.clientX, y: e.clientY });
@@ -617,6 +642,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   };
 
   const addGeneratorNode = () => {
+      recordHistory();
       const id = Math.random().toString(36).substr(2, 9);
       const centerX = ((-view.x) + (window.innerWidth / 2) - 200) / view.scale;
       const centerY = ((-view.y) + (window.innerHeight / 2) - 200) / view.scale;
@@ -652,6 +678,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      recordHistory();
       const file = e.target.files[0];
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -693,6 +720,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const removeItem = (id: string, e: MouseEvent | TouchEvent) => {
       e.stopPropagation();
+      recordHistory();
       setItems(prev => prev.filter(i => i.id !== id));
       if (activeItemId === id) setActiveItemId(null);
       setSelectedIds(prev => {
@@ -722,6 +750,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   };
 
   const switchImageVersion = (itemId: string, index: number) => {
+      recordHistory();
       setItems(prev => prev.map(item => {
           if (item.id === itemId && item.type === 'image') {
               const imgItem = item as ImageItem;
@@ -739,6 +768,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const removeImageVersion = (itemId: string, index: number, e: MouseEvent) => {
       e.stopPropagation();
+      recordHistory();
       setItems(prev => prev.map(item => {
           if (item.id === itemId && item.type === 'image') {
               const imgItem = item as ImageItem;
@@ -758,6 +788,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   };
 
   const switchGeneratorVersion = (itemId: string, index: number) => {
+      recordHistory();
       setItems(prev => prev.map(item => {
           if (item.id === itemId && item.type === 'generator') {
               const genItem = item as GeneratorItem;
@@ -779,6 +810,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const removeGeneratorVersion = (itemId: string, index: number, e: MouseEvent) => {
       e.stopPropagation();
+      recordHistory();
       setItems(prev => prev.map(item => {
           if (item.id === itemId && item.type === 'generator') {
               const genItem = item as GeneratorItem;
@@ -952,7 +984,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       else if (item.type === 'generator') updateItemData(itemId, { isEditing: true, editProgress: 0 });
 
       try {
-          let src = item.type === 'image' ? (item as ImageItem).src : (item as GeneratorItem).data.resultImage || '';
+          const src = item.type === 'image' ? (item as ImageItem).src : (item as GeneratorItem).data.resultImage || '';
           if (!src) throw new Error("No source image");
           const file = await convertSrcToFile(src);
           const serverFileName = await uploadImage(url, file);
@@ -969,9 +1001,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
           const checkStatus = async () => {
               try {
-                  const history = await getHistory(url, promptId);
-                  if (history[promptId]) {
-                      const result = history[promptId];
+                  const historyResponse = await getHistory(url, promptId);
+                  if (historyResponse[promptId]) {
+                      const result = historyResponse[promptId];
                       if (result.status.status_str === 'success') {
                            const outputs = result.outputs;
                            for (const key in outputs) {
@@ -1054,9 +1086,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
           const checkStatus = async () => {
               try {
-                  const history = await getHistory(url, promptId);
-                  if (history[promptId]) {
-                      const result = history[promptId];
+                  const historyRes = await getHistory(url, promptId);
+                  if (historyRes[promptId]) {
+                      const result = historyRes[promptId];
                       if (result.status.status_str === 'success') {
                           const outputs = result.outputs;
                           for (const key in outputs) {
@@ -1119,6 +1151,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleEditorSave = (newSrc: string) => {
     if (!editingImage) return;
+    recordHistory();
     const itemId = editingImage.id;
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
