@@ -8,33 +8,43 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+                        sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace'],
                     },
                     colors: {
-                        glass: "rgba(255, 255, 255, 0.65)",
-                        glassBorder: "rgba(255, 255, 255, 0.4)",
-                        primary: '#111827', // Dark/Black elegance
-                        accent: '#3b82f6', // Subtle blue accent
+                        glass: "rgba(255, 255, 255, 0.7)",
+                        glassBorder: "rgba(255, 255, 255, 0.5)",
+                        primary: '#0f172a',
+                        accent: '#2563eb',
+                        studio: {
+                            950: '#020617',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                        }
                     },
                     boxShadow: {
-                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
-                        'glass-hover': '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+                        'premium': '0 20px 50px -12px rgba(0, 0, 0, 0.08)',
+                        'premium-hover': '0 30px 60px -12px rgba(0, 0, 0, 0.12)',
+                        'glass': '0 8px 32px 0 rgba(15, 23, 42, 0.04)',
                     },
                     animation: {
-                        'fade-in': 'fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'fade-in': 'fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'float': 'float 6s ease-in-out infinite',
                     },
                     keyframes: {
                         fadeIn: {
-                            '0%': { opacity: '0', transform: 'scale(0.98)' },
-                            '100%': { opacity: '1', transform: 'scale(1)' },
+                            '0%': { opacity: '0', transform: 'scale(0.99) translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
                         }
                     }
                 }
@@ -48,41 +58,40 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #f8fafc;
-            /* High-end subtle noise texture or gradient */
-            background-image: 
-                radial-gradient(at 0% 0%, hsla(253,16%,7%,0) 0, transparent 50%), 
-                radial-gradient(at 50% 0%, hsla(225,39%,30%,0) 0, transparent 50%), 
-                radial-gradient(at 100% 0%, hsla(339,49%,30%,0) 0, transparent 50%);
+            background-color: #ffffff;
         }
         
         body {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(210, 40%, 98%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 100%, hsla(210, 40%, 96%, 1) 0, transparent 50%);
         }
 
         /* Sophisticated Scrollbar */
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
         }
         ::-webkit-scrollbar-track {
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(0, 0, 0, 0.1);
-            border-radius: 3px;
+            background: rgba(15, 23, 42, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(15, 23, 42, 0.2);
         }
         
         .glass-panel {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(24px) saturate(140%);
-            -webkit-backdrop-filter: blur(24px) saturate(140%);
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.8);
         }
 
-        /* Premium Loading Screen */
         #root-loading {
             position: fixed;
             inset: 0;
@@ -91,60 +100,53 @@
             align-items: center;
             justify-content: center;
             z-index: 9999;
-            background: #f8fafc;
+            background: #ffffff;
         }
         
         .loader-logo {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
-            margin-bottom: 32px;
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: #0f172a;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+            margin-bottom: 40px;
             position: relative;
         }
         
         .loader-logo::after {
             content: '';
             position: absolute;
-            inset: 0;
-            border-radius: 12px;
-            background: inherit;
-            filter: blur(10px);
-            opacity: 0.4;
-            z-index: -1;
-            animation: pulse-glow 3s infinite;
+            inset: -4px;
+            border-radius: 20px;
+            border: 2px solid #0f172a;
+            opacity: 0.1;
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         .loader-bar {
-            width: 120px;
+            width: 140px;
             height: 2px;
-            background: rgba(0,0,0,0.05);
-            border-radius: 2px;
+            background: rgba(15, 23, 42, 0.05);
+            border-radius: 4px;
             overflow: hidden;
-            position: relative;
         }
         
         .loader-progress {
-            position: absolute;
-            left: 0;
-            top: 0;
             height: 100%;
-            width: 30%;
+            width: 40%;
             background: #0f172a;
-            border-radius: 2px;
-            animation: progress 1.5s ease-in-out infinite;
+            animation: progress 2s ease-in-out infinite;
         }
 
         @keyframes progress {
-            0% { left: -30%; }
-            50% { left: 100%; }
-            100% { left: 100%; }
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(250%); }
         }
         
-        @keyframes pulse-glow {
-            0%, 100% { opacity: 0.4; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(1.1); }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.9); opacity: 0.1; }
+            50% { transform: scale(1.1); opacity: 0.2; }
+            100% { transform: scale(0.9); opacity: 0.1; }
         }
     </style>
 <script type="importmap">
@@ -160,15 +162,15 @@
 }
 </script>
 </head>
-<body class="text-slate-800 antialiased selection:bg-slate-900 selection:text-white">
+<body class="text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
     <div id="root">
         <div id="root-loading">
             <div class="loader-logo"></div>
             <div class="loader-bar">
                 <div class="loader-progress"></div>
             </div>
-            <div style="margin-top: 16px; font-family: 'Inter', sans-serif; font-size: 12px; color: #94a3b8; letter-spacing: 0.05em; font-weight: 500;">
-                INITIALIZING STUDIO
+            <div style="margin-top: 24px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; color: #64748b; letter-spacing: 0.3em; font-weight: 700; text-transform: uppercase;">
+                Studio Awakening
             </div>
         </div>
     </div>
