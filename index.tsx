@@ -5,7 +5,7 @@ import App from './App';
 
 console.log("Starting Application...");
 
-// Added optional flag to children to fix "children is missing" error when used in JSX
+// 明确定义 Props 和 State 接口
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
 }
@@ -15,11 +15,12 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Simple Error Boundary to catch render errors
-// Updated to use property initializers and ensure proper React.Component inheritance
+// 修复 TypeScript 可能无法识别继承属性的问题
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Using property initializer to fix "Property 'state' does not exist" errors
-  state: ErrorBoundaryState = { hasError: false, error: null };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -30,7 +31,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // 'state' and 'props' are now correctly identified via React.Component inheritance
     if (this.state.hasError) {
       return (
         <div style={{ padding: '20px', color: 'red', fontFamily: 'sans-serif', textAlign: 'center', marginTop: '50px' }}>
@@ -60,7 +60,6 @@ try {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <React.StrictMode>
-      {/* ErrorBoundary now correctly handles implicit children props */}
       <ErrorBoundary>
         <App />
       </ErrorBoundary>

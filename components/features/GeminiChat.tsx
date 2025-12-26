@@ -44,14 +44,14 @@ const MODELS: ModelInfo[] = [
   { id: 'nano-banana', name: 'Nano Banana', category: 'Image', description: "Standard high-quality image generation.", speedTag: '10s', tag: 'STD', apiType: 'grsai-draw' },
   { id: 'gpt-image-1.5', name: 'GPT Image 1.5', category: 'Image', description: "Next-gen prompt following excellence.", speedTag: '12s', tag: 'GPT', apiType: 'grsai-draw' },
   
-  // --- Standard Gemini Models ---
-  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', category: 'Image', description: "Grsai Gemini 2.0 High Speed.", speedTag: '1s', tag: 'FLASH', apiType: 'standard' },
-  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', category: 'Image', description: "Stable professional performance.", speedTag: '5s', tag: 'PRO', apiType: 'standard' },
+  // --- Standard Gemini Models (Updated to compliant Gemini 3 series) ---
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', category: 'Image', description: "Latest Gemini 3 high-speed model.", speedTag: '1s', tag: 'FLASH', apiType: 'standard' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', category: 'Image', description: "Advanced professional model for complex tasks.", speedTag: '5s', tag: 'PRO', apiType: 'standard' },
 
   // --- Video Models (Grsai Video/Sora API) ---
   { id: 'sora-2', name: 'Sora 2.0', category: 'Video', description: "Cinematic photorealistic video generation.", speedTag: '5-10m', tag: 'CINEMA', apiType: 'grsai-video' },
-  { id: 'veo3.1-pro', name: 'Veo 3.1 Pro', category: 'Video', description: "Professional grade video creative suite.", speedTag: '6m', tag: 'VEO-PRO', apiType: 'grsai-video' },
-  { id: 'veo3.1-fast', name: 'Veo 3.1 Fast', category: 'Video', description: "Fast preview video generation.", speedTag: '2m', tag: 'VEO-FAST', apiType: 'grsai-video' }
+  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1 Pro', category: 'Video', description: "Professional grade video creative suite.", speedTag: '6m', tag: 'VEO-PRO', apiType: 'grsai-video' },
+  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', category: 'Video', description: "Fast preview video generation.", speedTag: '2m', tag: 'VEO-FAST', apiType: 'grsai-video' }
 ];
 
 const GeminiChat: React.FC = () => {
@@ -73,7 +73,7 @@ const GeminiChat: React.FC = () => {
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: '您好！我是您的专业创作助手。现已完美对接 Grsai 增强接口，支持 Nano Banana 全系列绘画模型。生成图片将直接为您呈现在对话框中。' }
+    { role: 'model', text: '您好！我是您的专业创作助手。现已完美对接 Grsai 增强接口，支持全系列绘画与视频模型。' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<number | null>(null);
@@ -413,7 +413,14 @@ const GeminiChat: React.FC = () => {
               </div>
             </div>
           </div>
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); files.forEach(async f => { const processed = await processImageSource(URL.createObjectURL(f)); if (processed) setPendingImages(prev => [...prev, processed]); }); }} />
+          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={(e) => { 
+              const files = Array.from(e.target.files || []) as File[]; 
+              files.forEach(async f => { 
+                const processed = await processImageSource(URL.createObjectURL(f)); 
+                if (processed) setPendingImages(prev => [...prev, processed]); 
+              }); 
+            }} 
+          />
         </div>
       </div>
     </>
