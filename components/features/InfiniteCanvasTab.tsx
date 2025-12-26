@@ -194,9 +194,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
 
-    // Comfortable fit scale (80% of viewport)
+    // Fit scale (80% of viewport)
     const scale = Math.min((viewportW * 0.8) / rectW, (viewportH * 0.8) / rectH, 1.2);
-    
     const centerX = minX + rectW / 2;
     const centerY = minY + rectH / 2;
 
@@ -205,7 +204,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       y: viewportH / 2 - (centerY * scale),
       scale: scale
     });
-    showNotification("Selection Centered", "info");
+    showNotification("Centered Selection", "info");
   }, [selectedIds, items, showNotification]);
 
   const getAdaptiveFontSize = (text: string) => {
@@ -1084,7 +1083,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     <div className="flex items-center gap-1 p-1 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50 flex-wrap justify-center max-w-[400px]">
                         <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
                         <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
-                        <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
+                        <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'flux' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
                         <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'sdxl' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
                         <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
                         <div className="relative flex items-center gap-1 px-2 size-menu-container">
