@@ -157,7 +157,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const showNotification = useCallback((message: string, type: 'error' | 'success' | 'info' = 'error') => {
     if (notifyTimeoutRef.current) window.clearTimeout(notifyTimeoutRef.current);
     setNotification({ message, type });
-    notifyTimeoutRef.current = window.setTimeout(() => setNotification(null), 6000);
+    // Updated to 3000ms as per high-end fast feedback requirement
+    notifyTimeoutRef.current = window.setTimeout(() => setNotification(null), 3000);
   }, []);
 
   const recordHistory = useCallback(() => {
@@ -177,8 +178,46 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     showNotification("View Reset", "info");
   }, [showNotification]);
 
+  const fitAllItems = useCallback(() => {
+    if (items.length === 0) {
+      resetView();
+      return;
+    }
+    
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    items.forEach(item => {
+      minX = Math.min(minX, item.x);
+      minY = Math.min(minY, item.y);
+      maxX = Math.max(maxX, item.x + item.width);
+      maxY = Math.max(maxY, item.y + item.height);
+    });
+
+    const rectW = maxX - minX;
+    const rectH = maxY - minY;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    // Use a comfortable padding (85% of viewport)
+    const scale = Math.min((viewportW * 0.85) / rectW, (viewportH * 0.85) / rectH, 1.5);
+    
+    const centerX = minX + rectW / 2;
+    const centerY = minY + rectH / 2;
+
+    setView({
+      x: viewportW / 2 - (centerX * scale),
+      y: viewportH / 2 - (centerY * scale),
+      scale: scale
+    });
+    showNotification("View Fit to Content", "info");
+  }, [items, showNotification, resetView]);
+
   const centerSelection = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0) {
+      if (items.length > 0) fitAllItems();
+      else resetView();
+      return;
+    };
+    
     const selectedItems = items.filter(i => selectedIds.has(i.id));
     
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -194,7 +233,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
 
-    // Fit scale (80% of viewport)
     const scale = Math.min((viewportW * 0.8) / rectW, (viewportH * 0.8) / rectH, 1.2);
     const centerX = minX + rectW / 2;
     const centerY = minY + rectH / 2;
@@ -204,8 +242,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       y: viewportH / 2 - (centerY * scale),
       scale: scale
     });
-    showNotification("Centered Selection", "info");
-  }, [selectedIds, items, showNotification]);
+    showNotification("Selection Focused", "info");
+  }, [selectedIds, items, showNotification, fitAllItems, resetView]);
 
   const getAdaptiveFontSize = (text: string) => {
     const len = text.length;
@@ -386,6 +424,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             e.preventDefault(); 
             if (selectedIds.size > 0) {
               centerSelection();
+            } else if (items.length > 0) {
+              fitAllItems();
             } else {
               resetView(); 
             }
@@ -398,7 +438,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const handleKeyUp = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space') setIsSpacePressed(false); };
     window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
     return () => { if (pollInterval.current) clearInterval(pollInterval.current); window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-  }, [selectedIds, items, clipboard, previewImage, editingImage, performUndo, recordHistory, resetView, centerSelection]);
+  }, [selectedIds, items, clipboard, previewImage, editingImage, performUndo, recordHistory, resetView, centerSelection, fitAllItems]);
 
   const handleWheel = (e: WheelEvent) => {
     if ((e.target as HTMLElement).closest('textarea')) return;
@@ -1217,7 +1257,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   <h1 className="text-6xl font-black text-slate-900/[0.03] tracking-tight mb-4 uppercase leading-none">ComfyUI Studio</h1>
                   <p className="text-xs font-mono font-bold text-slate-900/10 tracking-[1em] uppercase ml-[1em]">Canvas Ready</p>
                   <div className="mt-8 flex justify-center gap-4 text-[10px] font-bold text-slate-400/30 uppercase tracking-widest">
-                    <span>Press 'F' to Reset</span>
+                    <span>Press 'F' to Focus</span>
                     <span>•</span>
                     <span>Drag to Pan</span>
                   </div>
@@ -1239,7 +1279,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               {selectionBox && <div className="absolute border-2 border-blue-500 bg-blue-500/10 backdrop-blur-[1px] rounded-lg pointer-events-none z-50 transition-none" style={{ left: Math.min(selectionBox.startX, selectionBox.currentX), top: Math.min(selectionBox.startY, selectionBox.currentY), width: Math.abs(selectionBox.currentX - selectionBox.startX), height: Math.abs(selectionBox.currentY - selectionBox.startY) }} />}
           </div>
           <div className="absolute top-6 left-6 z-50 group"><div className="flex items-center bg-white/30 backdrop-blur-md rounded-full border border-white/20 shadow-sm transition-all duration-500 ease-out p-1.5 hover:bg-white hover:shadow-lg hover:border-white/60 focus-within:bg-white focus-within:shadow-lg focus-within:border-white/60 cursor-pointer"><div className={`w-3 h-3 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-red-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-56 focus-within:w-56 transition-all duration-500 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[10px] font-mono text-slate-600 w-full pl-3 pr-2 focus:outline-none placeholder:text-slate-300 h-full" placeholder="Server URL" /></div></div></div>
-          <div className="absolute bottom-8 left-8 flex gap-3 z-50"><div className="glass-panel p-1 rounded-full flex gap-1 shadow-lg bg-white/80"><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><span className="flex items-center justify-center w-12 text-[10px] font-mono text-slate-400">{Math.round(view.scale * 100)}%</span><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div><button className="w-10 h-10 bg-white rounded-full text-slate-600 hover:text-slate-900 hover:shadow-lg transition-all shadow-md flex items-center justify-center" onClick={selectedIds.size > 0 ? centerSelection : resetView} title="Focus Selection or Reset View (F)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button></div>
+          <div className="absolute bottom-8 left-8 flex gap-3 z-50"><div className="glass-panel p-1 rounded-full flex gap-1 shadow-lg bg-white/80"><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><span className="flex items-center justify-center w-12 text-[10px] font-mono text-slate-400">{Math.round(view.scale * 100)}%</span><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div><button className="w-10 h-10 bg-white rounded-full text-slate-600 hover:text-slate-900 hover:shadow-lg transition-all shadow-md flex items-center justify-center" onClick={selectedIds.size > 0 ? centerSelection : (items.length > 0 ? fitAllItems : resetView)} title="Focus Selection or Fit All (F)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button></div>
           <div className="absolute bottom-8 right-8 z-50"><button className={`w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${showConnections ? 'text-blue-600' : 'text-slate-400'}`} onClick={() => setShowConnections(!showConnections)} title={showConnections ? "Hide Connections" : "Show Connections"}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{showConnections ? (<><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>) : (<><path d="M18 5a3 3 0 1 0-3 3"/><path d="M6 12a3 3 0 1 0 3 3"/><path d="M18 19a3 3 0 1 0-3-3"/><line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.3"></line><line x1="15.41" y1="6.51" x2="14" y2="7.33" opacity="0.3"></line><line x1="2" y1="2" x2="22" y2="22" className="text-slate-300"></line></>)}</svg></button></div>
           <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group"><button className="w-14 h-14 bg-slate-900 rounded-2xl shadow-2xl flex items-center justify-center text-white transition-all duration-500 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto"><button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Text to Image</span></button><input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} /><label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Upload Image</span></label></div></div>
           {editingImage && <ImageEditor src={editingImage.src} originalSrc={editingImage.originalSrc} onSave={handleEditorSave} onCancel={() => setEditingImage(null)} />}
