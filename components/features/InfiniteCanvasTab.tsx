@@ -254,14 +254,78 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       setSelectedIds(newSelectedIds); if (newItems.length === 1) setActiveItemId(newItems[0].id);
   }, [clipboard, topZ, view, recordHistory]);
 
+  const addNodeFromText = useCallback((text: string) => {
+    recordHistory();
+    const id = Math.random().toString(36).substr(2, 9);
+    
+    let targetX, targetY;
+    if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const clientX = mousePosRef.current.x;
+        const clientY = mousePosRef.current.y;
+        if (clientX > 0 && clientY > 0) {
+            const localX = clientX - rect.left;
+            const localY = clientY - rect.top;
+            targetX = (localX - view.x) / view.scale - 220;
+            targetY = (localY - view.y) / view.scale - 220; 
+        } else {
+            targetX = ((-view.x) + (window.innerWidth / 2) - 220) / view.scale;
+            targetY = ((-view.y) + (window.innerHeight / 2) - 220) / view.scale;
+        }
+    } else {
+        targetX = 0; targetY = 0;
+    }
+
+    const newItem: GeneratorItem = {
+      id,
+      type: 'generator',
+      x: targetX,
+      y: targetY,
+      width: 440,
+      height: 440,
+      zIndex: topZ + 1,
+      history: [],
+      historyIndex: -1,
+      data: {
+        model: 'nano-banana-pro',
+        prompt: text,
+        negPrompt: '',
+        width: 1024,
+        height: 1024,
+        steps: 9,
+        cfg: 3.5,
+        isGenerating: false,
+        progress: 0,
+        mode: 'input',
+        useLora: true,
+        referenceImages: []
+      }
+    };
+
+    setTopZ(prev => prev + 1);
+    setItems(prev => [...prev, newItem]);
+    setActiveItemId(id);
+    setSelectedIds(new Set([id]));
+    showNotification("Synthesized node from pasted context", "success");
+  }, [view, topZ, recordHistory, showNotification]);
+
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
         if ((e.target as HTMLElement).matches('input, textarea')) return;
-        if (e.clipboardData?.getData('text') === CLIPBOARD_MARKER) { e.preventDefault(); pasteItems(); }
+        const text = e.clipboardData?.getData('text');
+        if (!text) return;
+        
+        if (text === CLIPBOARD_MARKER) {
+            e.preventDefault();
+            pasteItems();
+        } else {
+            e.preventDefault();
+            addNodeFromText(text);
+        }
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [pasteItems]);
+  }, [pasteItems, addNodeFromText]);
 
   useEffect(() => {
     const handleFocusItem = (e: any) => {
@@ -295,7 +359,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const handleWheel = (e: WheelEvent) => {
     if ((e.target as HTMLElement).closest('textarea')) return;
     e.preventDefault();
-    const scaleAmount = -e.deltaY * 0.001;
+    const scaleAmount = -e.deltaY * 0.0012;
     const newScale = Math.min(Math.max(0.1, view.scale * (1 + scaleAmount)), 5);
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top;
@@ -325,19 +389,32 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleMouseMove = (e: MouseEvent) => {
     mousePosRef.current = { x: e.clientX, y: e.clientY };
+    
     if (resizeState) {
-        const dx = (e.clientX - resizeState.startX) / view.scale; const dy = (e.clientY - resizeState.startY) / view.scale;
-        setItems(prev => prev.map(item => item.id === resizeState.id ? { ...item, width: Math.max(256, resizeState.startW + dx), height: Math.max(256, resizeState.startH + dy) } : item));
+        const dx = (e.clientX - resizeState.startX) / view.scale; 
+        const dy = (e.clientY - resizeState.startY) / view.scale;
+        let newW = Math.max(128, resizeState.startW + dx);
+        let newH = Math.max(128, resizeState.startH + dy);
+        setItems(prev => prev.map(item => item.id === resizeState.id ? { ...item, width: newW, height: newH } : item));
         return; 
     }
+    
     if (isDragging) {
-      const dx = e.clientX - dragStart.x; const dy = e.clientY - dragStart.y;
-      if (dragMode === 'item') { setItems(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, x: item.x + dx / view.scale, y: item.y + dy / view.scale } : item)); setDragStart({ x: e.clientX, y: e.clientY }); } 
-      else if (dragMode === 'canvas') { setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy })); setDragStart({ x: e.clientX, y: e.clientY }); }
+      const dx = e.clientX - dragStart.x; 
+      const dy = e.clientY - dragStart.y;
+      
+      if (dragMode === 'item') {
+        setItems(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, x: item.x + dx / view.scale, y: item.y + dy / view.scale } : item));
+        setDragStart({ x: e.clientX, y: e.clientY }); 
+      } 
+      else if (dragMode === 'canvas') { 
+        setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy })); 
+        setDragStart({ x: e.clientX, y: e.clientY }); 
+      }
       else if (dragMode === 'selection' && selectionBox && containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect(); const currentX = e.clientX - rect.left; const currentY = e.clientY - rect.top;
           setSelectionBox(prev => prev ? ({ ...prev, currentX, currentY }) : null);
-          const boxX = Math.min(selectionBox.startX, currentX); const boxY = Math.min(selectionBox.startY, currentY); const boxW = Math.abs(currentX - selectionBox.startX); const boxW_abs = Math.abs(currentX - selectionBox.startX); const boxH = Math.abs(currentY - selectionBox.startY);
+          const boxX = Math.min(selectionBox.startX, currentX); const boxY = Math.min(selectionBox.startY, currentY); const boxW = Math.abs(currentX - selectionBox.startX); const boxH = Math.abs(currentY - selectionBox.startY);
           const worldX = (boxX - view.x) / view.scale; const worldY = (boxY - view.y) / view.scale; const worldW = boxW / view.scale; const worldH = boxH / view.scale;
           const newSelectedIds = new Set(e.shiftKey ? selectedIds : []);
           items.forEach(item => { if (item.x < worldX + worldW && item.x + item.width > worldX && item.y < worldY + worldH && item.y + item.height > worldY) { newSelectedIds.add(item.id); } });
@@ -346,7 +423,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     }
   };
 
-  const handleMouseUp = () => { setIsDragging(false); setResizeState(null); setSelectionBox(null); setDragMode('canvas'); };
+  const handleMouseUp = () => { 
+    setIsDragging(false); 
+    setResizeState(null); 
+    setSelectionBox(null); 
+    setDragMode('canvas'); 
+  };
 
   const handleTouchStart = (e: TouchEvent) => {
     if ((e.target as HTMLElement).closest('input, textarea, button, .no-drag')) { if (e.touches.length !== 2) return; }
@@ -435,7 +517,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const addGeneratorNode = () => {
       recordHistory(); const id = Math.random().toString(36).substr(2, 9);
-      const centerX = ((-view.x) + (window.innerWidth / 2) - 200) / view.scale; const centerY = ((-view.y) + (window.innerHeight / 2) - 200) / view.scale;
+      const centerX = ((-view.x) + (window.innerWidth / 2) - 220) / view.scale; const centerY = ((-view.y) + (window.innerHeight / 2) - 220) / view.scale;
       const newItem: GeneratorItem = { id, type: 'generator', x: centerX, y: centerY, width: 440, height: 440, zIndex: topZ + 1, history: [], historyIndex: -1, data: { model: 'nano-banana-pro', prompt: '', negPrompt: '', width: 1024, height: 1024, steps: 9, cfg: 3.5, isGenerating: false, progress: 0, mode: 'input', useLora: true, referenceImages: [] } };
       setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(id); setSelectedIds(new Set([id]));
   };
@@ -641,7 +723,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               return;
           }
 
-          // --- Default ComfyUI Logic ---
           const url = ensureHttps(serverUrl); if (!url) { cleanupState("服务器地址无效"); return; }
           const file = await convertSrcToFile(src); const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId(); const workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
@@ -987,7 +1068,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             </div>
                         )}
                         
-                        {/* Reference Image Slots - Bottom Left */}
                         {(item.data.model.startsWith('nano-banana')) && (
                           <div className="absolute bottom-4 left-4 z-40 flex flex-wrap gap-1.5 max-w-[150px]" onMouseDown={e => e.stopPropagation()}>
                              {(item.data.referenceImages || []).map((ref, idx) => (
@@ -1040,7 +1120,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     </div>
                 )}
             </div>
-            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl shadow-slate-900/20 text-xs font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"><span>Generate</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
+            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl shadow-slate-900/20 text-xs font-bold tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"><span>Generate</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
             <button className={`absolute -top-1 -right-1 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-lg border border-slate-100 transition-all duration-200 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
            {renderResizeHandle(item.id)}
         </div>
@@ -1057,9 +1137,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 2px; }
           @keyframes slideDown { from { transform: translate(-50%, -100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
           .animate-slide-down { animation: slideDown 0.6s cubic-bezier(0.2, 1, 0.2, 1) forwards; }
+          .canvas-bg {
+            background-image: radial-gradient(#64748b 1px, transparent 1px);
+          }
       `}</style>
 
-      {/* High-End User Prompt/Notification System */}
       {notification && (
         <div 
           onClick={() => setNotification(null)}
@@ -1085,8 +1167,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       )}
 
       <div className="flex-1 relative h-full">
-          <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ opacity: 0.15, backgroundImage: 'radial-gradient(#64748b 1.5px, transparent 1.5px)', backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
-          <div ref={containerRef} className={`absolute inset-0 canvas-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
+          <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ opacity: 0.15, backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
+          <div ref={containerRef} className={`absolute inset-0 ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
               <div className="absolute origin-top-left will-change-transform" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
                   {showConnections && renderConnections()}
                   {items.map(item => (
@@ -1094,7 +1176,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                           {item.type === 'image' ? renderImageNode(item as ImageItem) : item.type === 'generator' ? renderGeneratorNode(item as GeneratorItem) : renderEditNode(item as EditorItem)}
                       </div>
                   ))}
-                  {items.length === 0 && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center mix-blend-multiply"><h1 className="text-4xl font-light text-slate-900/10 tracking-tight mb-2">ComfyUI Studio</h1><p className="text-sm font-mono text-slate-900/20 tracking-widest uppercase">Canvas Empty</p></div>}
+                  {items.length === 0 && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center mix-blend-multiply"><h1 className="text-4xl font-light text-slate-900/10 tracking-tight mb-2 uppercase">ComfyUI Studio</h1><p className="text-sm font-mono text-slate-900/20 tracking-widest uppercase">Canvas Ready</p></div>}
               </div>
               {selectionBox && <div className="absolute border-2 border-blue-500 bg-blue-500/10 backdrop-blur-[1px] rounded-lg pointer-events-none z-50 transition-none" style={{ left: Math.min(selectionBox.startX, selectionBox.currentX), top: Math.min(selectionBox.startY, selectionBox.currentY), width: Math.abs(selectionBox.currentX - selectionBox.startX), height: Math.abs(selectionBox.currentY - selectionBox.startY) }} />}
           </div>
