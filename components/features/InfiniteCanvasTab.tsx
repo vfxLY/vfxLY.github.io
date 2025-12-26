@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
 import Button from '../ui/Button';
 import ImageEditor from './ImageEditor';
@@ -21,6 +22,11 @@ const CLIPBOARD_MARKER = "COMFY_UI_PRO_INTERNAL_NODES";
 type ItemType = 'image' | 'generator' | 'editor';
 type ModelType = 'flux' | 'sdxl' | 'nano-banana-pro' | 'nano-banana-fast';
 type EditMode = 'qwen' | 'nano-banana-pro' | 'nano-banana-fast';
+
+interface Notification {
+  message: string;
+  type: 'error' | 'success' | 'info';
+}
 
 interface HistoryEntry {
   src: string;
@@ -136,6 +142,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [dragMode, setDragMode] = useState<'canvas' | 'item' | 'selection'>('canvas');
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [notification, setNotification] = useState<Notification | null>(null);
 
   const mousePosRef = useRef({ x: 0, y: 0 });
   const lastPinchDistRef = useRef<number | null>(null);
@@ -146,6 +153,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pollInterval = useRef<number | null>(null);
+  const notifyTimeoutRef = useRef<number | null>(null);
+
+  const showNotification = useCallback((message: string, type: 'error' | 'success' | 'info' = 'error') => {
+    if (notifyTimeoutRef.current) window.clearTimeout(notifyTimeoutRef.current);
+    setNotification({ message, type });
+    notifyTimeoutRef.current = window.setTimeout(() => setNotification(null), 6000);
+  }, []);
 
   const recordHistory = useCallback(() => {
     setUndoStack(prev => [JSON.parse(JSON.stringify(items)), ...prev].slice(0, 50));
@@ -485,12 +499,19 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                   updateImageItem(itemId, { src: imgUrl, isRegenerating: false, history: newHistory, historyIndex: newHistory.length - 1 }); return;
                               }
                            }
+                  } else if (historyResponse[promptId]?.status.status_str === 'error') {
+                      showNotification(`生成取消：服务器错误`, 'error');
+                      updateImageItem(itemId, { isRegenerating: false });
+                      return;
                   }
                   setTimeout(checkStatus, 1000);
               } catch (e) { updateImageItem(itemId, { isRegenerating: false }); }
           };
           checkStatus();
-      } catch (e) { updateImageItem(itemId, { isRegenerating: false }); }
+      } catch (e: any) { 
+        showNotification(`生成失败：网络连接超时`, 'error');
+        updateImageItem(itemId, { isRegenerating: false }); 
+      }
   };
 
   const executeUpscale = async (itemId: string) => {
@@ -515,6 +536,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false, upscaleProgress: 100 }); else updateItemData(itemId, { isUpscaling: false, upscaleProgress: 100 }); return;
                             }
                          }
+                } else if (history[promptId]?.status.status_str === 'error') {
+                   showNotification(`放大取消：资源调度失败`, 'error');
+                   if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateItemData(itemId, { isUpscaling: false });
+                   return;
                 }
                 const logs = await getLogs(url); const parsed = parseConsoleProgress(logs);
                 const currentProg = item.type === 'image' ? ((item as ImageItem).upscaleProgress || 0) : ((item as any).data?.upscaleProgress || 0);
@@ -524,7 +549,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             } catch (e) { if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateItemData(itemId, { isUpscaling: false }); }
         };
         checkStatus();
-    } catch (e) { if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateItemData(itemId, { isUpscaling: false }); }
+    } catch (e) { 
+        showNotification(`放大失败：网络连接异常`, 'error');
+        if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateItemData(itemId, { isUpscaling: false }); 
+    }
   };
 
   const executeEdit = async (itemId: string, prompt: string) => {
@@ -540,7 +568,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const cleanupState = (errorMsg: string) => {
           if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 0 }); 
           else if (item.type === 'generator') updateItemData(itemId, { isEditing: false, editProgress: 0 });
-          alert(`生成取消：${errorMsg}`);
+          showNotification(`生成取消：${errorMsg}`, 'error');
       };
 
       try {
@@ -642,7 +670,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               } catch (e) { cleanupState("轮询失败"); }
           };
           checkStatus();
-      } catch (e: any) { cleanupState(e.message || "未知错误"); }
+      } catch (e: any) { cleanupState(e.message || "网络连接异常"); }
   };
 
   const executeGeneration = async (itemId: string) => {
@@ -663,7 +691,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               if (!response.ok) {
                   const errData = await response.json().catch(() => ({}));
                   updateItemData(itemId, { isGenerating: false, progress: 0 });
-                  alert(`生成失败：${errData.message || response.statusText}`);
+                  showNotification(`生成失败：${errData.message || response.statusText}`, 'error');
                   return;
               }
               const reader = response.body?.getReader(); const decoder = new TextDecoder(); let finalImageUrl = ""; let buffer = "";
@@ -680,7 +708,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       if (data.results && data.results.length > 0 && data.results[0].url) { finalImageUrl = data.results[0].url; }
                       if (data.error) {
                           updateItemData(itemId, { isGenerating: false, progress: 0 });
-                          alert(`违规或失败：${data.message}`);
+                          showNotification(`生成取消：${data.message}`, 'error');
                           return;
                       }
                     } catch (e) {}
@@ -693,7 +721,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 setItems(prev => prev.map(i => i.id === itemId ? { ...i, history: newHistory, historyIndex: newHistory.length - 1 } : i));
               } else {
                 updateItemData(itemId, { isGenerating: false, progress: 0 });
-                alert("未获得图片URL，请检查输入或重试");
+                showNotification(`生成失败：未获得图片URL`, 'error');
               }
               return;
           }
@@ -737,7 +765,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                           }
                   } else if (historyRes[promptId]?.status.status_str === 'error') {
                       updateItemData(itemId, { isGenerating: false, progress: 0 });
-                      alert("服务器运行错误");
+                      showNotification(`生成取消：服务器运行错误`, 'error');
                       return;
                   }
                   const logs = await getLogs(url); const parsed = parseConsoleProgress(logs);
@@ -749,7 +777,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           checkStatus();
       } catch (e: any) { 
           updateItemData(itemId, { isGenerating: false, progress: 0 }); 
-          alert(`错误：${e.message}`);
+          showNotification(`生成失败：网络连接超时`, 'error');
       }
   };
 
@@ -1027,7 +1055,35 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           .custom-scrollbar::-webkit-scrollbar { width: 4px; }
           .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
           .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 2px; }
+          @keyframes slideDown { from { transform: translate(-50%, -100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+          .animate-slide-down { animation: slideDown 0.6s cubic-bezier(0.2, 1, 0.2, 1) forwards; }
       `}</style>
+
+      {/* High-End User Prompt/Notification System */}
+      {notification && (
+        <div 
+          onClick={() => setNotification(null)}
+          className="fixed top-12 left-1/2 -translate-x-1/2 z-[1000] min-w-[320px] max-w-lg cursor-pointer animate-slide-down"
+        >
+          <div className={`glass-panel p-4 rounded-[32px] border shadow-[0_40px_80px_rgba(0,0,0,0.1)] flex items-center gap-4 ${notification.type === 'error' ? 'bg-rose-50/80 border-rose-100/50' : 'bg-white/80 border-white/40'}`}>
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-white'}`}>
+              {notification.type === 'error' ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              )}
+            </div>
+            <div className="flex-1">
+              <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Studio Notification</span>
+              <p className={`text-xs font-bold leading-tight ${notification.type === 'error' ? 'text-rose-600' : 'text-slate-800'}`}>{notification.message}</p>
+            </div>
+            <button className="text-slate-300 hover:text-slate-500 transition-colors p-2 rounded-full">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 relative h-full">
           <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ opacity: 0.15, backgroundImage: 'radial-gradient(#64748b 1.5px, transparent 1.5px)', backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
           <div ref={containerRef} className={`absolute inset-0 canvas-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
@@ -1045,7 +1101,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           <div className="absolute top-6 left-6 z-50 group"><div className="flex items-center bg-white/30 backdrop-blur-md rounded-full border border-white/20 shadow-sm transition-all duration-500 ease-out p-1.5 hover:bg-white hover:shadow-lg hover:border-white/60 focus-within:bg-white focus-within:shadow-lg focus-within:border-white/60 cursor-pointer"><div className={`w-3 h-3 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-red-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-56 focus-within:w-56 transition-all duration-500 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[10px] font-mono text-slate-600 w-full pl-3 pr-2 focus:outline-none placeholder:text-slate-300 h-full" placeholder="Server URL" /></div></div></div>
           <div className="absolute bottom-8 left-8 flex gap-3 z-50"><div className="glass-panel p-1 rounded-full flex gap-1 shadow-lg bg-white/80"><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><span className="flex items-center justify-center w-12 text-[10px] font-mono text-slate-400">{Math.round(view.scale * 100)}%</span><button className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-500 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button></div><button className="w-10 h-10 bg-white rounded-full text-slate-600 hover:text-slate-900 hover:shadow-lg transition-all shadow-md flex items-center justify-center" onClick={() => setView({ x: 0, y: 0, scale: 1 })}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button></div>
           <div className="absolute bottom-8 right-8 z-50"><button className={`w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${showConnections ? 'text-blue-600' : 'text-slate-400'}`} onClick={() => setShowConnections(!showConnections)} title={showConnections ? "Hide Connections" : "Show Connections"}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{showConnections ? (<><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>) : (<><path d="M18 5a3 3 0 1 0-3 3"/><path d="M6 12a3 3 0 1 0 3 3"/><path d="M18 19a3 3 0 1 0-3-3"/><line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.3"></line><line x1="15.41" y1="6.51" x2="14" y2="7.33" opacity="0.3"></line><line x1="2" y1="2" x2="22" y2="22" className="text-slate-300"></line></>)}</svg></button></div>
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group"><button className="w-14 h-14 bg-slate-900 rounded-2xl shadow-2xl flex items-center justify-center text-white transition-all duration-500 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto"><button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2 2H4a2 2 0 0 1 2-2h5.34"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Text to Image</span></button><input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} /><label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Upload Image</span></label></div></div>
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group"><button className="w-14 h-14 bg-slate-900 rounded-2xl shadow-2xl flex items-center justify-center text-white transition-all duration-500 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button><div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto"><button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Text to Image</span></button><input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} /><label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2"><div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-slate-400 group-hover/item:text-slate-900 group-hover/item:scale-110 transition-all border border-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg></div><span className="text-xs font-medium text-slate-500 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity translate-x-[-10px] group-hover/item:translate-x-0">Upload Image</span></label></div></div>
           {editingImage && <ImageEditor src={editingImage.src} originalSrc={editingImage.originalSrc} onSave={handleEditorSave} onCancel={() => setEditingImage(null)} />}
           {previewImage && <div className="fixed inset-0 z-[100] bg-slate-50/90 backdrop-blur-xl flex items-center justify-center p-8 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-8 right-8 text-slate-400 hover:text-slate-900 transition-colors bg-white rounded-full p-2 shadow-sm" onClick={() => setPreviewImage(null)}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-8 shadow-2xl rounded-3xl bg-white p-2" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-2xl bg-slate-100" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-slate-900/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10 text-white z-50 animate-fade-in pointer-events-none select-none"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dimensions</span><div className="w-px h-3 bg-white/20"></div><span className="text-xs font-mono font-medium tracking-wider">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
       </div>
