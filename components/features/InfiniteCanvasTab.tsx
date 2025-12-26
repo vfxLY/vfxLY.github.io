@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
 import Button from '../ui/Button';
 import ImageEditor from './ImageEditor';
@@ -21,7 +20,7 @@ const CLIPBOARD_MARKER = "COMFY_UI_PRO_INTERNAL_NODES";
 // --- Types ---
 type ItemType = 'image' | 'generator' | 'editor';
 type ModelType = 'flux' | 'sdxl' | 'nano-banana-pro' | 'nano-banana-fast';
-type EditMode = 'qwen';
+type EditMode = 'qwen' | 'nano-banana-pro' | 'nano-banana-fast';
 
 interface HistoryEntry {
   src: string;
@@ -383,7 +382,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const targetNode = items.find(item => item.type === 'generator' && worldX >= item.x && worldX <= item.x + item.width && worldY >= item.y && worldY <= item.y + item.height);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0]; if (!file.type.startsWith('image/')) return;
+      const file = e.dataTransfer.files[0] as File; if (!file.type.startsWith('image/')) return;
       recordHistory(); const reader = new FileReader();
       reader.onload = (ev) => {
         const src = ev.target?.result as string;
@@ -429,7 +428,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      recordHistory(); const file = e.target.files[0]; const reader = new FileReader();
+      recordHistory(); const file = e.target.files[0] as File; const reader = new FileReader();
       reader.onload = (ev) => {
         const src = ev.target?.result as string; const img = new Image(); img.src = src;
         img.onload = () => {
@@ -530,10 +529,92 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const executeEdit = async (itemId: string, prompt: string) => {
       const item = items.find(i => i.id === itemId); if (!item) return;
-      const url = ensureHttps(serverUrl); if (!url) return;
-      if (item.type === 'image') updateImageItem(itemId, { isEditing: true, editProgress: 0 }); else if (item.type === 'generator') updateItemData(itemId, { isEditing: true, editProgress: 0 });
+      
+      const currentMode = item.type === 'image' 
+        ? (item.editMode || 'qwen') 
+        : (item.type === 'generator' ? (item.data.editMode || 'qwen') : 'qwen');
+      
+      if (item.type === 'image') updateImageItem(itemId, { isEditing: true, editProgress: 0 }); 
+      else if (item.type === 'generator') updateItemData(itemId, { isEditing: true, editProgress: 0 });
+      
+      const cleanupState = (errorMsg: string) => {
+          if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 0 }); 
+          else if (item.type === 'generator') updateItemData(itemId, { isEditing: false, editProgress: 0 });
+          alert(`生成取消：${errorMsg}`);
+      };
+
       try {
           const src = item.type === 'image' ? (item as ImageItem).src : ((item as any).data?.resultImage || '');
+          
+          if (currentMode.startsWith('nano-banana')) {
+              const apiKey = localStorage.getItem('gemini_api_key') || '';
+              const baseUrl = localStorage.getItem('gemini_api_base') || 'https://api.grsai.com';
+              
+              const res = await fetch(src);
+              const blob = await res.blob();
+              const base64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+              });
+
+              const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/draw/nano-banana`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                body: JSON.stringify({ model: currentMode, prompt, aspectRatio: "auto", imageSize: "1K", urls: [base64] })
+              });
+
+              if (!response.ok) {
+                  const errorData = await response.json().catch(() => ({}));
+                  cleanupState(errorData.message || errorData.msg || `网络错误 (${response.status})`);
+                  return;
+              }
+
+              const reader = response.body?.getReader();
+              const decoder = new TextDecoder();
+              let finalImageUrl = "";
+              let buffer = "";
+
+              if (reader) {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || "";
+                  for (const line of lines) {
+                    const cleanLine = line.trim();
+                    if (!cleanLine.startsWith('data:')) continue;
+                    const jsonStr = cleanLine.replace('data:', '').trim();
+                    if (jsonStr === '[DONE]') break;
+                    try {
+                      const data = JSON.parse(jsonStr);
+                      if (data.progress !== undefined) {
+                        if (item.type === 'image') updateImageItem(itemId, { editProgress: data.progress }); 
+                        else updateItemData(itemId, { editProgress: data.progress });
+                      }
+                      if (data.results?.[0]?.url) finalImageUrl = data.results[0].url;
+                      if (data.error || data.status === 'failed') {
+                          cleanupState(data.message || "内部错误");
+                          return;
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
+
+              if (finalImageUrl) {
+                const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: item.width, height: item.height, zIndex: topZ + 2, parentId: item.id, src: finalImageUrl, history: [{ src: finalImageUrl, prompt, model: currentMode, editMode: currentMode }], historyIndex: 0, editMode: currentMode };
+                setTopZ(prev => prev + 2); setItems(prev => [...prev, newItem]); setSelectedIds(new Set([newItem.id])); 
+                if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); else updateItemData(itemId, { isEditing: false, editProgress: 100, editPrompt: '' });
+              } else {
+                cleanupState("未获得生成结果，可能触发了内容过滤");
+              }
+              return;
+          }
+
+          // --- Default ComfyUI Logic ---
+          const url = ensureHttps(serverUrl); if (!url) { cleanupState("服务器地址无效"); return; }
           const file = await convertSrcToFile(src); const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId(); const workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
           const promptId = await queuePrompt(url, workflow, clientId);
@@ -550,16 +631,18 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                   if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); else updateItemData(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); return;
                               }
                            }
+                  } else if (historyResponse[promptId]?.status.status_str === 'error') {
+                      cleanupState("Workflow 运行错误"); return;
                   }
                   const logs = await getLogs(url); const parsed = parseConsoleProgress(logs);
                   const currentProg = item.type === 'image' ? ((item as ImageItem).editProgress || 20) : ((item as any).data?.editProgress || 20);
                   const newProg = parsed > 0 ? parsed : Math.min(currentProg + 2, 95);
                   if (item.type === 'image') updateImageItem(itemId, { editProgress: newProg }); else updateItemData(itemId, { editProgress: newProg });
                   setTimeout(checkStatus, 1000);
-              } catch (e) { if (item.type === 'image') updateImageItem(itemId, { isEditing: false }); else updateItemData(itemId, { isEditing: false }); }
+              } catch (e) { cleanupState("轮询失败"); }
           };
           checkStatus();
-      } catch (e) { if (item.type === 'image') updateImageItem(itemId, { isEditing: false }); else updateItemData(itemId, { isEditing: false }); }
+      } catch (e: any) { cleanupState(e.message || "未知错误"); }
   };
 
   const executeGeneration = async (itemId: string) => {
@@ -577,7 +660,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                 body: JSON.stringify(payload)
               });
-              if (!response.ok) throw new Error(`API Error ${response.status}`);
+              if (!response.ok) {
+                  const errData = await response.json().catch(() => ({}));
+                  updateItemData(itemId, { isGenerating: false, progress: 0 });
+                  alert(`生成失败：${errData.message || response.statusText}`);
+                  return;
+              }
               const reader = response.body?.getReader(); const decoder = new TextDecoder(); let finalImageUrl = ""; let buffer = "";
               if (reader) {
                 while (true) {
@@ -587,8 +675,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     const cleanLine = line.trim(); if (!cleanLine.startsWith('data:')) continue;
                     const jsonStr = cleanLine.replace('data:', '').trim(); if (jsonStr === '[DONE]') break;
                     try {
-                      const data = JSON.parse(jsonStr); if (data.progress !== undefined) updateItemData(itemId, { progress: data.progress });
+                      const data = JSON.parse(jsonStr); 
+                      if (data.progress !== undefined) updateItemData(itemId, { progress: data.progress });
                       if (data.results && data.results.length > 0 && data.results[0].url) { finalImageUrl = data.results[0].url; }
+                      if (data.error) {
+                          updateItemData(itemId, { isGenerating: false, progress: 0 });
+                          alert(`违规或失败：${data.message}`);
+                          return;
+                      }
                     } catch (e) {}
                   }
                 }
@@ -597,6 +691,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 const newHistory = [...item.history, { src: finalImageUrl, prompt: item.data.prompt, model: item.data.model }];
                 updateItemData(itemId, { isGenerating: false, progress: 100, resultImage: finalImageUrl, mode: 'result' });
                 setItems(prev => prev.map(i => i.id === itemId ? { ...i, history: newHistory, historyIndex: newHistory.length - 1 } : i));
+              } else {
+                updateItemData(itemId, { isGenerating: false, progress: 0 });
+                alert("未获得图片URL，请检查输入或重试");
               }
               return;
           }
@@ -638,6 +735,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                   return;
                               }
                           }
+                  } else if (historyRes[promptId]?.status.status_str === 'error') {
+                      updateItemData(itemId, { isGenerating: false, progress: 0 });
+                      alert("服务器运行错误");
+                      return;
                   }
                   const logs = await getLogs(url); const parsed = parseConsoleProgress(logs);
                   const currentProg = (item.type === 'generator' || item.type === 'editor') ? item.data.progress : 0;
@@ -646,7 +747,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               } catch (e) { updateItemData(itemId, { isGenerating: false, progress: 0 }); }
           };
           checkStatus();
-      } catch (e) { updateItemData(itemId, { isGenerating: false, progress: 0 }); }
+      } catch (e: any) { 
+          updateItemData(itemId, { isGenerating: false, progress: 0 }); 
+          alert(`错误：${e.message}`);
+      }
   };
 
   const handleEditorSave = (newSrc: string) => {
@@ -681,11 +785,32 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       return connections.length === 0 ? null : ( <svg className="absolute top-0 left-0 pointer-events-none overflow-visible" style={{ width: 1, height: 1, zIndex: 0 }}>{connections}</svg> );
   };
 
-  const renderEditOverlay = ( itemId: string, isEditing: boolean, progress: number, prompt: string | undefined, onPromptChange: (val: string) => void, onExecute: () => void, currentMode: EditMode = 'qwen' ) => (
+  const renderEditOverlay = ( 
+    itemId: string, 
+    isEditing: boolean, 
+    progress: number, 
+    prompt: string | undefined, 
+    onPromptChange: (val: string) => void, 
+    onExecute: () => void, 
+    currentMode: EditMode = 'qwen',
+    onModeChange: (m: EditMode) => void
+  ) => (
       <div className={`absolute bottom-6 left-6 right-20 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()} >
           <div className="flex flex-col gap-2">
-            <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl">
-                <input type="text" className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono" placeholder="Modify..." value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
+            <div className="flex justify-center gap-1 bg-white/60 backdrop-blur-md p-1 rounded-full border border-white/40 self-start shadow-sm mb-1">
+              {(['qwen', 'nano-banana-pro', 'nano-banana-fast'] as EditMode[]).map(m => (
+                <button 
+                  key={m} 
+                  onClick={() => onModeChange(m)}
+                  className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all ${currentMode === m ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {m === 'qwen' ? 'Qwen' : m.replace('nano-banana-', '').toUpperCase()}
+                </button>
+              ))}
+            </div>
+            
+            <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl border border-white/60">
+                <input type="text" className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono" placeholder={`Modify with ${currentMode === 'qwen' ? 'Qwen' : 'Nano'}...`} value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
                 <button onClick={onExecute} disabled={isEditing || !prompt} className="text-white rounded-xl w-8 h-8 flex items-center justify-center transition-colors disabled:opacity-50 shadow-md bg-slate-950 hover:bg-black">
                     {isEditing ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
@@ -751,7 +876,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 </div>
               )}
               <div className="w-full h-full flex items-center justify-center bg-slate-50"><img src={item.src} alt="uploaded" className="max-w-full max-h-full object-contain pointer-events-none select-none" /></div>
-              {renderEditOverlay( item.id, !!item.isEditing, item.editProgress || 0, item.editPrompt, (val) => updateImageItem(item.id, { editPrompt: val }), () => executeEdit(item.id, item.editPrompt || ''), item.editMode )}
+              {renderEditOverlay( item.id, !!item.isEditing, item.editProgress || 0, item.editPrompt, (val) => updateImageItem(item.id, { editPrompt: val }), () => executeEdit(item.id, item.editPrompt || ''), item.editMode || 'qwen', (m) => updateImageItem(item.id, { editMode: m }) )}
               <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                  {!item.isRegenerating && !item.isUpscaling && (
                     <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button>
@@ -867,7 +992,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             </div>
                         )}
                         <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.data.resultImage} className="max-w-full max-h-full object-contain pointer-events-none select-none" alt="result" /></div>
-                        {renderEditOverlay( item.id, !!item.data.isEditing, item.data.editProgress || 0, item.data.editPrompt, (val) => updateItemData(item.id, { editPrompt: val }), () => executeEdit(item.id, item.data.editPrompt || ''), item.data.editMode )}
+                        {renderEditOverlay( 
+                          item.id, 
+                          !!item.data.isEditing, 
+                          item.data.editProgress || 0, 
+                          item.data.editPrompt, 
+                          (val) => updateItemData(item.id, { editPrompt: val }), 
+                          () => executeEdit(item.id, item.data.editPrompt || ''), 
+                          item.data.editMode || 'qwen',
+                          (m) => updateItemData(item.id, { editMode: m })
+                        )}
                         <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {!item.data.isGenerating && !item.data.isUpscaling && (
                                 <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-700 flex items-center justify-center hover:scale-105 hover:shadow-xl hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
