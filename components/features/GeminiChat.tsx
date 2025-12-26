@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -44,11 +43,11 @@ const MODELS: ModelInfo[] = [
   { id: 'nano-banana', name: 'Nano Banana', category: 'Image', description: "Standard high-quality image generation.", speedTag: '10s', tag: 'STD', apiType: 'grsai-draw' },
   { id: 'gpt-image-1.5', name: 'GPT Image 1.5', category: 'Image', description: "Next-gen prompt following excellence.", speedTag: '12s', tag: 'GPT', apiType: 'grsai-draw' },
   
-  // --- Standard Gemini Models (Updated to compliant Gemini 3 series) ---
+  // --- Standard Gemini Models ---
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', category: 'Image', description: "Latest Gemini 3 high-speed model.", speedTag: '1s', tag: 'FLASH', apiType: 'standard' },
   { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', category: 'Image', description: "Advanced professional model for complex tasks.", speedTag: '5s', tag: 'PRO', apiType: 'standard' },
 
-  // --- Video Models (Grsai Video/Sora API) ---
+  // --- Video Models ---
   { id: 'sora-2', name: 'Sora 2.0', category: 'Video', description: "Cinematic photorealistic video generation.", speedTag: '5-10m', tag: 'CINEMA', apiType: 'grsai-video' },
   { id: 'veo-3.1-generate-preview', name: 'Veo 3.1 Pro', category: 'Video', description: "Professional grade video creative suite.", speedTag: '6m', tag: 'VEO-PRO', apiType: 'grsai-video' },
   { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', category: 'Video', description: "Fast preview video generation.", speedTag: '2m', tag: 'VEO-FAST', apiType: 'grsai-video' }
@@ -73,7 +72,7 @@ const GeminiChat: React.FC = () => {
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: '您好！我是您的专业创作助手。现已完美对接 Grsai 增强接口，支持全系列绘画与视频模型。' }
+    { role: 'model', text: '您好！我是您的 AI 创作助手。我基于 Google Nano Banana Pro 构建，专注于帮您生成与编辑顶级的图像和视频内容。现已支持 Nano Banana Pro/Fast 及 Seedance 视频模型。' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<number | null>(null);
@@ -215,8 +214,9 @@ const GeminiChat: React.FC = () => {
                    if (res.url) finalImageUrl = res.url;
                    if (res.content) fullText = res.content;
                 }
-              } catch (e) {
-                // Ignore chunk errors
+                if (data.error) throw new Error(data.message);
+              } catch (e: any) {
+                if (e.message) throw e;
               }
             }
           }
@@ -235,11 +235,16 @@ const GeminiChat: React.FC = () => {
         currentImages.forEach(img => currentParts.push({ inlineData: { mimeType: img.type, data: img.base64 } }));
         currentParts.push({ text: userText || "分析提供的图片。" });
 
+        const systemInstruction = `你是一个专业的设计与视觉创作专家，是基于 Google Nano Banana Pro 模型构建的 AI 创作助手。
+你的核心功能是帮助用户生成和编辑图像、生成视频内容、分析用户需求并提供创作建议。
+你的技术基础包括：图像生成（Google Nano Banana Pro）、视频生成（Seedance Pro V1.5）。
+你能够协调多个 AI 模型来完成复杂的视觉创作任务。`;
+
         const result = await ai.models.generateContent({
           model: modelInfo.id,
           contents: [...conversationHistory, { role: 'user', parts: currentParts }],
           config: { 
-            systemInstruction: "你是一个专业的设计与视觉专家。",
+            systemInstruction,
             tools: isWebSearchEnabled ? [{ googleSearch: {} }] : undefined 
           }
         });
@@ -249,7 +254,7 @@ const GeminiChat: React.FC = () => {
       console.error("Chat Error:", error);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        text: `连接失败：${error.message}`,
+        text: `创作中断：${error.message}`,
         isError: true 
       }]);
     } finally {
@@ -302,7 +307,7 @@ const GeminiChat: React.FC = () => {
                 <h3 className="text-base font-black text-slate-900 truncate">{currentModelInfo.name}</h3>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <div className={`w-2 h-2 rounded-full ${hasKey ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{hasKey ? 'READY' : 'KEY MISSING'}</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{hasKey ? 'STUDIO READY' : 'KEY MISSING'}</span>
                 </div>
               </div>
             </div>
@@ -333,7 +338,7 @@ const GeminiChat: React.FC = () => {
               {isTyping && (
                 <div className="flex flex-col gap-2 pl-2">
                    <div className="animate-pulse flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                     {currentProgress !== null ? `Generating ${currentProgress}%` : 'Connecting Engine...'}
+                     {currentProgress !== null ? `Generating ${currentProgress}%` : 'Studio Thinking...'}
                    </div>
                    {currentProgress !== null && (
                      <div className="w-32 h-1 bg-slate-100 rounded-full overflow-hidden">
