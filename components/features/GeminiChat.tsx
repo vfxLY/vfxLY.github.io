@@ -28,7 +28,10 @@ interface Message {
 
 const GeminiChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [manualKey, setManualKey] = useState<string>(localStorage.getItem('gemini_api_key') || '');
+  const [tempKey, setTempKey] = useState<string>('');
   const [input, setInput] = useState('');
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -43,25 +46,59 @@ const GeminiChat: React.FC = () => {
   // Check for API Key on mount
   useEffect(() => {
     const checkKey = async () => {
-      // Cast to any briefly if standard Window augmentation fails in some environments
+      // 1. Check local storage first
+      if (manualKey) {
+        setHasKey(true);
+        return;
+      }
+
+      // 2. Check for AI Studio integration
       const aistudio = (window as any).aistudio;
       if (aistudio && typeof aistudio.hasSelectedApiKey === 'function') {
-        const selected = await aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      } else {
-        // Fallback for environments where the key is provided directly via env
-        setHasKey(!!process.env.API_KEY);
+        try {
+          const selected = await aistudio.hasSelectedApiKey();
+          if (selected) {
+            setHasKey(true);
+            return;
+          }
+        } catch (e) {
+          console.debug("AI Studio check failed, falling back.");
+        }
       }
+
+      // 3. Check for process.env (build-time or platform injected)
+      const envKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : null;
+      setHasKey(!!envKey);
     };
     checkKey();
-  }, []);
+  }, [manualKey]);
+
+  const saveManualKey = () => {
+    if (tempKey.trim()) {
+      localStorage.setItem('gemini_api_key', tempKey.trim());
+      setManualKey(tempKey.trim());
+      setHasKey(true);
+      setIsSettingsOpen(false);
+    }
+  };
+
+  const clearManualKey = () => {
+    localStorage.removeItem('gemini_api_key');
+    setManualKey('');
+    setHasKey(null); // Re-trigger check
+  };
 
   const handleSelectKey = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio && typeof aistudio.openSelectKey === 'function') {
-      await aistudio.openSelectKey();
-      // Assume success as per instructions to avoid race conditions
-      setHasKey(true);
+      try {
+        await aistudio.openSelectKey();
+        setHasKey(true);
+      } catch (e) {
+        setIsSettingsOpen(true); // Fallback to manual entry if dialog fails
+      }
+    } else {
+      setIsSettingsOpen(true);
     }
   };
 
@@ -152,7 +189,9 @@ const GeminiChat: React.FC = () => {
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Priority: Manual Key > AI Studio / Env Key
+      const apiKey = manualKey || (typeof process !== 'undefined' && process.env ? process.env.API_KEY : '');
+      const ai = new GoogleGenAI({ apiKey: apiKey as string });
       
       const conversationHistory = messages.map(m => ({
         role: m.role,
@@ -187,7 +226,6 @@ const GeminiChat: React.FC = () => {
 
       const aiText = response.text || "抱歉，引擎响应异常，请重试。";
       
-      // Extract grounding links if search was used
       const links: GroundingLink[] = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks) {
@@ -201,11 +239,14 @@ const GeminiChat: React.FC = () => {
       setMessages(prev => [...prev, { role: 'model', text: aiText, links: links.length > 0 ? links : undefined }]);
     } catch (error: any) {
       console.error("Gemini Pro Error:", error);
-      if (error.message?.includes("Requested entity was not found")) {
+      if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("invalid API key")) {
         setHasKey(false);
-        setMessages(prev => [...prev, { role: 'model', text: "API Key 已失效或未找到相关实体，请重新关联付费项目。" }]);
+        setMessages(prev => [...prev, { role: 'model', text: "检测到 API Key 无效。请检查您的手动设置或重新关联项目。" }]);
+      } else if (error.message?.includes("Requested entity was not found")) {
+        setHasKey(false);
+        setMessages(prev => [...prev, { role: 'model', text: "API Key 关联的实体未找到。请确保您使用的是付费 GCP 项目的 Key。" }]);
       } else {
-        setMessages(prev => [...prev, { role: 'model', text: "Pro 引擎连接受阻，请确保您关联的是付费 GCP 项目并检查配额。" }]);
+        setMessages(prev => [...prev, { role: 'model', text: "引擎连接受阻。错误详情：" + (error.message || "未知错误") }]);
       }
     } finally {
       setIsTyping(false);
@@ -214,6 +255,55 @@ const GeminiChat: React.FC = () => {
 
   return (
     <>
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 animate-fade-in">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsSettingsOpen(false)} />
+          <div className="relative w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden border border-white">
+             <div className="px-8 pt-8 pb-6 border-b border-slate-50 flex items-center justify-between">
+                <div>
+                   <h3 className="text-lg font-bold text-slate-900">API 设置</h3>
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Manual API Key Configuration</p>
+                </div>
+                <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+             </div>
+             <div className="p-8">
+                <div className="mb-6">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Google Gemini API Key</label>
+                  <input 
+                    type="password" 
+                    placeholder="粘贴您的 API Key..." 
+                    value={tempKey}
+                    onChange={(e) => setTempKey(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-slate-950/10 focus:bg-white transition-all text-sm font-mono"
+                  />
+                  <p className="mt-3 text-[10px] text-slate-400 leading-relaxed italic">
+                    您的 Key 将仅存储在浏览器本地 (Local Storage)，不会上传到我们的服务器。
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={saveManualKey}
+                    className="w-full bg-slate-950 text-white py-4 rounded-2xl font-bold text-sm shadow-xl shadow-slate-900/10 hover:scale-[1.02] active:scale-98 transition-all"
+                  >
+                    保存并应用
+                  </button>
+                  {manualKey && (
+                    <button 
+                      onClick={clearManualKey}
+                      className="w-full py-3 text-rose-500 font-bold text-xs hover:bg-rose-50 rounded-2xl transition-colors"
+                    >
+                      清除当前 Key
+                    </button>
+                  )}
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
@@ -249,22 +339,34 @@ const GeminiChat: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className={`w-1.5 h-1.5 rounded-full ${hasKey ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nano Banana Pro</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    {manualKey ? 'Local API Key' : 'Banana Pro Engine'}
+                  </span>
                 </div>
               </div>
             </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100/50"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => { setTempKey(manualKey); setIsSettingsOpen(true); }}
+                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100/50"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+              <button 
+                onClick={() => setIsOpen(false)}
+                className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors rounded-full hover:bg-slate-100/50"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {hasKey === false ? (
+            {!hasKey ? (
               <div className="h-full flex flex-col items-center justify-center p-12 text-center animate-fade-in">
                 <div className="w-16 h-16 bg-blue-50 rounded-[24px] flex items-center justify-center text-blue-600 mb-6 shadow-sm border border-blue-100/50">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -274,20 +376,28 @@ const GeminiChat: React.FC = () => {
                 </div>
                 <h3 className="text-base font-bold text-slate-900 mb-3 tracking-tight">启用专业级视觉引擎</h3>
                 <p className="text-xs text-slate-500 mb-8 leading-relaxed px-4">
-                  接入 Nano Banana Pro (Gemini 3 Pro Image) 需要关联您的付费 API Key 以解锁高保真图像分析与专业提示词优化。
+                  接入 Nano Banana Pro (Gemini 3 Pro Image) 需要关联您的 API Key 以解锁高保真图像分析与专业提示词优化。
                 </p>
-                <button 
-                  onClick={handleSelectKey}
-                  className="w-full bg-slate-950 text-white px-8 py-3.5 rounded-2xl font-bold text-xs shadow-xl shadow-slate-900/10 hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>选择 API Key</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </button>
+                <div className="w-full flex flex-col gap-3">
+                  <button 
+                    onClick={handleSelectKey}
+                    className="w-full bg-slate-950 text-white px-8 py-3.5 rounded-2xl font-bold text-xs shadow-xl shadow-slate-900/10 hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>关联付费项目 (AI Studio)</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  </button>
+                  <button 
+                    onClick={() => { setTempKey(manualKey); setIsSettingsOpen(true); }}
+                    className="w-full bg-white border border-slate-200 text-slate-600 px-8 py-3.5 rounded-2xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>手动输入 API Key</span>
+                  </button>
+                </div>
                 <a 
                   href="https://ai.google.dev/gemini-api/docs/billing" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="mt-6 text-[10px] font-bold text-slate-300 uppercase tracking-widest hover:text-blue-500 transition-colors"
+                  className="mt-8 text-[10px] font-bold text-slate-300 uppercase tracking-widest hover:text-blue-500 transition-colors"
                 >
                   计费文档说明
                 </a>

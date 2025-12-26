@@ -1,37 +1,35 @@
 
 declare global {
+  // Fix: Define AIStudio interface to match the global type name used by the environment
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
   interface Window {
-    /**
-     * The aistudio object is injected into the window context by the platform.
-     * Inlined the members to avoid potential duplicate identifier conflicts with global AIStudio declarations.
-     */
-    aistudio?: {
-      /**
-       * Checks if the user has already selected an API key.
-       */
-      hasSelectedApiKey: () => Promise<boolean>;
-      /**
-       * Opens the dialog for the user to select an API key.
-       */
-      openSelectKey: () => Promise<void>;
-    };
+    // Fixed: Subsequent property declarations must have the same type. 
+    // Property 'aistudio' must be of type 'AIStudio'.
+    aistudio?: AIStudio;
   }
 
   namespace NodeJS {
     interface ProcessEnv {
-      /**
-       * The API key used for Google GenAI calls, injected by the environment.
-       */
       API_KEY: string;
     }
   }
 
-  /**
-   * Declares process as a global variable to satisfy TypeScript when accessing process.env.
-   * Fixed: Reference the existing 'Process' type to resolve type conflict with environment-provided types.
-   */
+  // Fix: Define Process interface to match the global type name used by the environment
+  interface Process {
+    env: {
+      API_KEY?: string;
+      [key: string]: string | undefined;
+    };
+  }
+
+  // Use 'any' or a safe object for process to prevent build errors in non-node environments
+  // Fixed: Subsequent variable declarations must have the same type. 
+  // Variable 'process' must be of type 'Process'.
   var process: Process;
 }
 
-// Exporting an empty object ensures this file is treated as a module.
 export {};
