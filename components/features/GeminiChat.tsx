@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -144,12 +145,6 @@ const GeminiChat: React.FC = () => {
     return () => window.removeEventListener('add-image-to-chat', handleAddImage);
   }, []);
 
-  const notifyCanvas = (src: string, prompt: string) => {
-    window.dispatchEvent(new CustomEvent('add-generated-image-to-canvas', { 
-      detail: { src, prompt } 
-    }));
-  };
-
   const handleSend = async () => {
     if ((!input.trim() && pendingImages.length === 0) || isTyping || !hasKey) return;
     
@@ -220,13 +215,11 @@ const GeminiChat: React.FC = () => {
                    if (res.url) finalImageUrl = res.url;
                    if (res.content) fullText = res.content;
                 }
-              } catch (e) {}
+              } catch (e) {
+                // Ignore chunk errors
+              }
             }
           }
-        }
-
-        if (finalImageUrl) {
-          notifyCanvas(finalImageUrl, userText || "Generated from Grsai Draw");
         }
 
         setMessages(prev => [...prev, { 
@@ -250,26 +243,7 @@ const GeminiChat: React.FC = () => {
             tools: isWebSearchEnabled ? [{ googleSearch: {} }] : undefined 
           }
         });
-
-        let text = "";
-        let genImages: ChatImage[] = [];
-        if (result.candidates?.[0]?.content?.parts) {
-          for (const part of result.candidates[0].content.parts) {
-            if (part.inlineData) {
-              const src = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-              genImages.push({ url: src });
-              notifyCanvas(src, userText || "Generated from Gemini SDK");
-            } else if (part.text) {
-              text += part.text;
-            }
-          }
-        }
-
-        setMessages(prev => [...prev, { 
-          role: 'model', 
-          text: text || (genImages.length > 0 ? "生成成功" : "引擎未返回有效文本。"),
-          images: genImages
-        }]);
+        setMessages(prev => [...prev, { role: 'model', text: result.text || "引擎未返回有效文本。" }]);
       }
     } catch (error: any) {
       console.error("Chat Error:", error);

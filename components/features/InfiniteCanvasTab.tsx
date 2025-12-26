@@ -22,7 +22,7 @@ const CLIPBOARD_MARKER = "COMFY_UI_PRO_INTERNAL_NODES";
 // --- Types ---
 
 type ItemType = 'image' | 'generator' | 'editor';
-type ModelType = 'flux' | 'sdxl';
+type ModelType = 'flux' | 'sdxl' | 'nano-banana-pro' | 'nano-banana-fast';
 type EditMode = 'qwen';
 
 // 记录每一张图生成的完整元数据
@@ -1088,11 +1088,81 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const executeGeneration = async (itemId: string) => {
       const item = items.find(i => i.id === itemId);
       if (!item) return;
-      const url = ensureHttps(serverUrl);
-      if (!url) return;
+      
       updateItemData(itemId, { isGenerating: true, progress: 0 });
 
       try {
+          // --- Grsai Nano Banana Integration ---
+          if (item.type === 'generator' && (item.data.model === 'nano-banana-pro' || item.data.model === 'nano-banana-fast')) {
+              const apiKey = localStorage.getItem('gemini_api_key') || '';
+              const baseUrl = localStorage.getItem('gemini_api_base') || 'https://api.grsai.com';
+              const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+              
+              const payload = {
+                model: item.data.model,
+                prompt: item.data.prompt,
+                aspectRatio: "auto",
+                imageSize: "1K"
+              };
+
+              const response = await fetch(`${cleanBaseUrl}/v1/draw/nano-banana`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) throw new Error(`API Error ${response.status}`);
+
+              const reader = response.body?.getReader();
+              const decoder = new TextDecoder();
+              let finalImageUrl = "";
+              let buffer = "";
+
+              if (reader) {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || "";
+
+                  for (const line of lines) {
+                    const cleanLine = line.trim();
+                    if (!cleanLine.startsWith('data:')) continue;
+                    
+                    const jsonStr = cleanLine.replace('data:', '').trim();
+                    if (jsonStr === '[DONE]') break;
+                    
+                    try {
+                      const data = JSON.parse(jsonStr);
+                      if (data.progress !== undefined) updateItemData(itemId, { progress: data.progress });
+                      if (data.results && data.results.length > 0 && data.results[0].url) {
+                         finalImageUrl = data.results[0].url;
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
+
+              if (finalImageUrl) {
+                const newEntry: HistoryEntry = { src: finalImageUrl, prompt: item.data.prompt, model: item.data.model };
+                const newHistory = [...item.history, newEntry];
+                updateItemData(itemId, { isGenerating: false, progress: 100, resultImage: finalImageUrl, mode: 'result' });
+                setItems(prev => prev.map(i => i.id === itemId ? { ...i, history: newHistory, historyIndex: newHistory.length - 1 } : i));
+              } else {
+                throw new Error("No image generated");
+              }
+              return;
+          }
+
+          // --- Existing ComfyUI Logic ---
+          const url = ensureHttps(serverUrl);
+          if (!url) return;
+          
           let workflow;
           let promptId;
           const clientId = generateClientId();
@@ -1100,10 +1170,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               const data = item.data;
               if (data.model === 'flux') {
                   workflow = generateFluxWorkflow(data.prompt, data.width, data.height, data.steps, data.useLora ?? true);
-              } else {
+              } else if (data.model === 'sdxl') {
                   workflow = generateSdxlWorkflow(data.prompt, data.negPrompt, data.width, data.height, data.steps, data.cfg);
               }
-              promptId = await queuePrompt(url, workflow, clientId);
+              if (workflow) {
+                promptId = await queuePrompt(url, workflow, clientId);
+              }
           } 
           else if (item.type === 'editor') {
               const data = item.data;
@@ -1115,6 +1187,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               workflow = generateEditWorkflow(data.prompt, serverFileName, data.steps, data.cfg);
               promptId = await queuePrompt(url, workflow, clientId);
           } else return;
+
+          if (!promptId) return;
 
           const checkStatus = async () => {
               try {
@@ -1380,7 +1454,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             {displayPrompt && renderPromptFloat(displayPrompt, displaySteps, displayCfg, displayModel, item.id)}
             {isInput && (
                 <div className={`absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
-                    <div className="flex items-center gap-1 p-1 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50">
+                    <div className="flex items-center gap-1 p-1 bg-white rounded-2xl shadow-glass-hover border border-slate-100/50 flex-wrap justify-center max-w-[400px]">
+                        <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
+                        <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
                         <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'flux' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
                         <button className={`px-4 py-2 text-[10px] tracking-wider font-bold rounded-xl transition-all ${item.data.model === 'sdxl' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
                         <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
@@ -1409,7 +1485,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 ))}
                             </div>
                         )}
-                         <textarea rows={6} className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-200 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model === 'flux' ? "Type to create..." : "SDXL Prompt..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
+                         <textarea rows={6} className={`w-full flex-1 bg-transparent font-medium text-slate-800 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-200 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Nano Banana Prompt..." : "Type to create..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
                         {item.data.model === 'sdxl' && <input className="w-full bg-transparent border-t border-slate-100 mt-4 pt-4 text-sm text-slate-500 placeholder:text-slate-300 focus:outline-none text-center font-mono" placeholder="Negative prompt..." value={item.data.negPrompt} onChange={(e) => updateItemData(item.id, { negPrompt: e.target.value })} />}
                         {item.data.model === 'flux' && <div className="mt-4 flex items-center gap-3 cursor-pointer group/lora bg-slate-50/50 hover:bg-slate-50 px-4 py-2 rounded-full border border-slate-100/50 transition-all active:scale-95" onClick={() => updateItemData(item.id, { useLora: !(item.data.useLora ?? true) })}><span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${item.data.useLora !== false ? 'text-indigo-500' : 'text-slate-300'}`}>Cartoon Style</span><div className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-300 ${item.data.useLora !== false ? 'bg-indigo-500' : 'bg-slate-200'}`}><div className={`w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${item.data.useLora !== false ? 'translate-x-4' : 'translate-x-0'}`} /></div></div>}
                     </div>
