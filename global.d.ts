@@ -1,32 +1,39 @@
 
 declare global {
   /**
-   * Define the AIStudio interface to provide type information for the
-   * globally available aistudio object. This interface will merge with
-   * any existing definitions in the environment, resolving type mismatch errors.
+   * AIStudio interface is merged with the existing platform definition.
+   * Redundant method declarations are removed to resolve "Duplicate identifier" errors
+   * as they are already provided by the ambient environment.
    */
   interface AIStudio {
-    hasSelectedApiKey(): Promise<boolean>;
-    openSelectKey(): Promise<void>;
   }
 
   interface Window {
     /**
-     * Note: 'aistudio' is already declared on the Window interface as 'AIStudio' 
-     * by the environment. Re-declaring it here with different modifiers or 
-     * an inline object type causes compilation errors.
+     * Platform-injected objects like aistudio are typically optional on the Window interface.
+     * Adding the '?' modifier ensures compatibility with existing global declarations
+     * and fixes the "All declarations of 'aistudio' must have identical modifiers" error.
      */
+    aistudio?: AIStudio;
   }
 
   namespace NodeJS {
     interface ProcessEnv {
       /**
-       * The API key is automatically injected by the environment.
+       * Injected API key used for Gemini API calls.
        */
       API_KEY: string;
     }
+    interface Process {
+      env: ProcessEnv;
+    }
   }
+
+  /**
+   * Declares the process variable in the global scope to support process.env.API_KEY usage
+   * throughout the application.
+   */
+  var process: NodeJS.Process;
 }
 
-// Ensure this file is treated as a module
 export {};
