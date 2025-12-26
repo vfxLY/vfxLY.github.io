@@ -43,17 +43,23 @@ const GeminiChat: React.FC = () => {
   // Check for API Key on mount
   useEffect(() => {
     const checkKey = async () => {
-      if (window.aistudio) {
-        const selected = await window.aistudio.hasSelectedApiKey();
+      // Cast to any briefly if standard Window augmentation fails in some environments
+      const aistudio = (window as any).aistudio;
+      if (aistudio && typeof aistudio.hasSelectedApiKey === 'function') {
+        const selected = await aistudio.hasSelectedApiKey();
         setHasKey(selected);
+      } else {
+        // Fallback for environments where the key is provided directly via env
+        setHasKey(!!process.env.API_KEY);
       }
     };
     checkKey();
   }, []);
 
   const handleSelectKey = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
+    const aistudio = (window as any).aistudio;
+    if (aistudio && typeof aistudio.openSelectKey === 'function') {
+      await aistudio.openSelectKey();
       // Assume success as per instructions to avoid race conditions
       setHasKey(true);
     }

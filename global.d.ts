@@ -1,39 +1,37 @@
 
 declare global {
-  /**
-   * AIStudio interface is merged with the existing platform definition.
-   * Redundant method declarations are removed to resolve "Duplicate identifier" errors
-   * as they are already provided by the ambient environment.
-   */
-  interface AIStudio {
-  }
-
   interface Window {
     /**
-     * Platform-injected objects like aistudio are typically optional on the Window interface.
-     * Adding the '?' modifier ensures compatibility with existing global declarations
-     * and fixes the "All declarations of 'aistudio' must have identical modifiers" error.
+     * The aistudio object is injected into the window context by the platform.
+     * Inlined the members to avoid potential duplicate identifier conflicts with global AIStudio declarations.
      */
-    aistudio?: AIStudio;
+    aistudio?: {
+      /**
+       * Checks if the user has already selected an API key.
+       */
+      hasSelectedApiKey: () => Promise<boolean>;
+      /**
+       * Opens the dialog for the user to select an API key.
+       */
+      openSelectKey: () => Promise<void>;
+    };
   }
 
   namespace NodeJS {
     interface ProcessEnv {
       /**
-       * Injected API key used for Gemini API calls.
+       * The API key used for Google GenAI calls, injected by the environment.
        */
       API_KEY: string;
-    }
-    interface Process {
-      env: ProcessEnv;
     }
   }
 
   /**
-   * Declares the process variable in the global scope to support process.env.API_KEY usage
-   * throughout the application.
+   * Declares process as a global variable to satisfy TypeScript when accessing process.env.
+   * Fixed: Reference the existing 'Process' type to resolve type conflict with environment-provided types.
    */
-  var process: NodeJS.Process;
+  var process: Process;
 }
 
+// Exporting an empty object ensures this file is treated as a module.
 export {};
