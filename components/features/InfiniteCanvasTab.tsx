@@ -5,7 +5,7 @@ import ImageEditor from './ImageEditor';
 import { 
   ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage, getLogs, parseConsoleProgress 
 } from '../../services/api';
-import { generateFluxWorkflow, generateEditWorkflow, generateSdxlWorkflow, generateUpscaleWorkflow, generateBananaWorkflow } from '../../services/workflows';
+import { generateFluxWorkflow, generateEditWorkflow, generateSdxlWorkflow, generateUpscaleWorkflow } from '../../services/workflows';
 
 // --- Constants ---
 
@@ -23,7 +23,7 @@ const CLIPBOARD_MARKER = "COMFY_UI_PRO_INTERNAL_NODES";
 
 type ItemType = 'image' | 'generator' | 'editor';
 type ModelType = 'flux' | 'sdxl';
-type EditMode = 'qwen' | 'banana';
+type EditMode = 'qwen';
 
 // 记录每一张图生成的完整元数据
 interface HistoryEntry {
@@ -300,6 +300,38 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, [pasteItems]);
+
+  useEffect(() => {
+    const handleFocusItem = (e: any) => {
+      const { id } = e.detail;
+      const target = items.find(i => i.id === id);
+      if (target) {
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        
+        // Calculate fit scale (leave some margin)
+        const scale = Math.min(
+          (viewportW * 0.7) / target.width,
+          (viewportH * 0.7) / target.height,
+          1.5 // Max zoom
+        );
+
+        // Center item
+        const itemCenterX = target.x + target.width / 2;
+        const itemCenterY = target.y + target.height / 2;
+        
+        const newX = viewportW / 2 - (itemCenterX * scale);
+        const newY = viewportH / 2 - (itemCenterY * scale);
+        
+        setView({ x: newX, y: newY, scale });
+        setActiveItemId(id);
+        setSelectedIds(new Set([id]));
+      }
+    };
+
+    window.addEventListener('focus-canvas-item', handleFocusItem);
+    return () => window.removeEventListener('focus-canvas-item', handleFocusItem);
+  }, [items]);
 
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
@@ -615,6 +647,20 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const newZ = topZ + 1;
       setTopZ(newZ);
       setItems(prev => prev.map(i => i.id === id ? { ...i, zIndex: newZ } : i));
+
+      // NEW: Support for Ctrl + Left Click to add to Gemini Chat
+      if (e.ctrlKey) {
+        const item = items.find(i => i.id === id);
+        let src = '';
+        if (item?.type === 'image') src = item.src;
+        else if (item?.type === 'generator') src = item.data.resultImage || '';
+        
+        if (src) {
+          window.dispatchEvent(new CustomEvent('add-image-to-chat', { detail: { src, id: id } }));
+          return; // Skip normal selection if this was a shortcut
+        }
+      }
+
       if (e.shiftKey) {
           const newSelected = new Set(selectedIds);
           if (newSelected.has(id)) {
@@ -855,12 +901,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId();
           
-          let workflow;
-          if ((item.editMode || currentVer.editMode) === 'banana') {
-            workflow = generateBananaWorkflow(currentVer.prompt, serverFileName);
-          } else {
-            workflow = generateEditWorkflow(currentVer.prompt, serverFileName, currentVer.steps || 20, currentVer.cfg || 2.5);
-          }
+          const workflow = generateEditWorkflow(currentVer.prompt, serverFileName, currentVer.steps || 20, currentVer.cfg || 2.5);
           
           const promptId = await queuePrompt(url, workflow, clientId);
 
@@ -977,9 +1018,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const url = ensureHttps(serverUrl);
       if (!url) return;
 
-      const currentMode = item.type === 'image' ? (item as ImageItem).editMode : (item as GeneratorItem).data.editMode;
-      const mode = currentMode || 'qwen';
-
       if (item.type === 'image') updateImageItem(itemId, { isEditing: true, editProgress: 0 });
       else if (item.type === 'generator') updateItemData(itemId, { isEditing: true, editProgress: 0 });
 
@@ -990,13 +1028,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           const serverFileName = await uploadImage(url, file);
           const clientId = generateClientId();
           
-          let workflow;
-          if (mode === 'banana') {
-            workflow = generateBananaWorkflow(prompt, serverFileName);
-          } else {
-            workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
-          }
-          
+          const workflow = generateEditWorkflow(prompt, serverFileName, 20, 2.5);
           const promptId = await queuePrompt(url, workflow, clientId);
 
           const checkStatus = async () => {
@@ -1020,9 +1052,9 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                       zIndex: topZ + 2, 
                                       parentId: item.id, 
                                       src: imgUrl,
-                                      history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5, editMode: mode }], 
+                                      history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5, editMode: 'qwen' }], 
                                       historyIndex: 0,
-                                      editMode: mode
+                                      editMode: 'qwen'
                                   };
                                   setTopZ(prev => prev + 2);
                                   setItems(prev => [...prev, newItem]);
@@ -1223,8 +1255,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     prompt: string | undefined, 
     onPromptChange: (val: string) => void, 
     onExecute: () => void,
-    currentMode: EditMode = 'qwen',
-    onModeChange: (m: EditMode) => void
+    currentMode: EditMode = 'qwen'
   ) => (
       <div 
         className={`absolute bottom-6 left-6 right-20 transition-all duration-300 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`}
@@ -1233,18 +1264,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         onWheel={e => e.stopPropagation()}
       >
           <div className="flex flex-col gap-2">
-            <div className="flex gap-1 bg-white/90 p-1 rounded-xl shadow-sm border border-slate-100 self-start">
-               <button onClick={() => onModeChange('qwen')} className={`px-3 py-1 text-[9px] font-bold rounded-lg transition-all ${currentMode === 'qwen' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>Qwen 2509</button>
-               <button onClick={() => onModeChange('banana')} className={`px-3 py-1 text-[9px] font-bold rounded-lg transition-all ${currentMode === 'banana' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>Banana Pro</button>
-            </div>
             <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-glass-hover bg-white/80 backdrop-blur-xl">
                 <input type="text" className="flex-1 bg-transparent border-none text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none px-3 font-mono" placeholder="Modify..." value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
-                <button onClick={onExecute} disabled={isEditing || !prompt} className={`text-white rounded-xl w-8 h-8 flex items-center justify-center transition-colors disabled:opacity-50 shadow-md ${currentMode === 'banana' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-950 hover:bg-black'}`}>
+                <button onClick={onExecute} disabled={isEditing || !prompt} className="text-white rounded-xl w-8 h-8 flex items-center justify-center transition-colors disabled:opacity-50 shadow-md bg-slate-950 hover:bg-black">
                     {isEditing ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
             </div>
           </div>
-          {isEditing && <div className="absolute -top-3 left-0 w-full h-1 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full transition-all duration-300 ${currentMode === 'banana' ? 'bg-indigo-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }}></div></div>}
+          {isEditing && <div className="absolute -top-3 left-0 w-full h-1 bg-gray-100 rounded-full overflow-hidden"><div className="h-full transition-all duration-300 bg-blue-600" style={{ width: `${progress}%` }}></div></div>}
       </div>
   );
 
@@ -1321,12 +1348,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   item.editPrompt, 
                   (val) => updateImageItem(item.id, { editPrompt: val }), 
                   () => executeEdit(item.id, item.editPrompt || ''),
-                  item.editMode,
-                  (m) => updateImageItem(item.id, { editMode: m })
+                  item.editMode
               )}
               <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                  {!item.isRegenerating && !item.isUpscaling && (
-                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all group/upscale" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button>
+                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-emerald-600 flex items-center justify-center hover:scale-105 hover:shadow-xl active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black leading-none tracking-tighter">4K</span></button>
                         {item.historyIndex >= 0 && item.history[item.historyIndex].prompt !== "Uploaded image" && <button onClick={(e) => { e.stopPropagation(); regenerateImage(item.id); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-700 flex items-center justify-center hover:scale-105 hover:shadow-xl hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Regenerate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-500" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>}
                         <button onClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }} className="w-9 h-9 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-700 flex items-center justify-center hover:scale-105 hover:shadow-xl hover:text-amber-500 active:scale-95 transition-all" title="Paint Edit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></>
                  )}
@@ -1404,8 +1430,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             item.data.editPrompt, 
                             (val) => updateItemData(item.id, { editPrompt: val }), 
                             () => executeEdit(item.id, item.data.editPrompt || ''),
-                            item.data.editMode,
-                            (m) => updateItemData(item.id, { editMode: m })
+                            item.data.editMode
                         )}
                         <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {!item.data.isGenerating && !item.data.isUpscaling && (

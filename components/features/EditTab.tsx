@@ -5,7 +5,7 @@ import Button from '../ui/Button';
 import { TextArea } from '../ui/Input';
 import Slider from '../ui/Slider';
 import { ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage } from '../../services/api';
-import { generateEditWorkflow, generateBananaWorkflow } from '../../services/workflows';
+import { generateEditWorkflow } from '../../services/workflows';
 import { GenerationStatus } from '../../types';
 
 interface EditTabProps {
@@ -13,15 +13,12 @@ interface EditTabProps {
   setServerUrl: (url: string) => void;
 }
 
-type EditMode = 'qwen' | 'banana';
-
 const EditTab: React.FC<EditTabProps> = ({ serverUrl, setServerUrl: _ }) => {
   const [prompt, setPrompt] = useState('修改姿势敞开衣服露出诱人的胸部 穿着黑丝内衣');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [steps, setSteps] = useState(20);
   const [cfg, setCfg] = useState(2.5);
-  const [editMode, setEditMode] = useState<EditMode>('qwen');
   
   const [status, setStatus] = useState<GenerationStatus>({
     isGenerating: false,
@@ -62,14 +59,7 @@ const EditTab: React.FC<EditTabProps> = ({ serverUrl, setServerUrl: _ }) => {
       setStatus({ isGenerating: true, progress: 15, statusText: 'Queuing task...', imageUrl: undefined });
       
       const clientId = generateClientId();
-      
-      let workflow;
-      if (editMode === 'banana') {
-        workflow = generateBananaWorkflow(prompt, imageName);
-      } else {
-        workflow = generateEditWorkflow(prompt, imageName, steps, cfg);
-      }
-      
+      const workflow = generateEditWorkflow(prompt, imageName, steps, cfg);
       const promptId = await queuePrompt(url, workflow, clientId);
       
       let fakeProgress = 15;
@@ -129,29 +119,13 @@ const EditTab: React.FC<EditTabProps> = ({ serverUrl, setServerUrl: _ }) => {
             </div>
           </div>
 
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 ml-1">改图方式 (Edit Method)</label>
-            <select 
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm transition-all"
-              value={editMode}
-              onChange={(e) => setEditMode(e.target.value as EditMode)}
-            >
-              <option value="qwen">Qwen 2509 (Standard)</option>
-              <option value="banana">Nano Banana Pro (Gemini 3 Pro)</option>
-            </select>
-          </div>
-          
           <TextArea label="Modification Prompt" value={prompt} onChange={e => setPrompt(e.target.value)} rows={3} />
           
-          {editMode === 'qwen' && (
-            <>
-              <Slider label="Steps" min={10} max={100} step={5} value={steps} onChange={e => setSteps(Number(e.target.value))} />
-              <Slider label="CFG Scale" min={0.5} max={10} step={0.5} value={cfg} onChange={e => setCfg(Number(e.target.value))} />
-            </>
-          )}
+          <Slider label="Steps" min={10} max={100} step={5} value={steps} onChange={e => setSteps(Number(e.target.value))} />
+          <Slider label="CFG Scale" min={0.5} max={10} step={0.5} value={cfg} onChange={e => setCfg(Number(e.target.value))} />
 
           <Button onClick={handleGenerate} loading={status.isGenerating}>
-            {editMode === 'banana' ? 'Pro 改图 (Banana)' : 'Edit Image'}
+            Edit Image
           </Button>
           
           {status.error && (

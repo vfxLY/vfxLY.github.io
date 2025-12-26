@@ -67,60 +67,6 @@ export const generateEditWorkflow = (
   };
 };
 
-export const generateBananaWorkflow = (
-  prompt: string,
-  imageFilename: string
-): ComfyWorkflow => {
-  const seed = Math.floor(Math.random() * 102401);
-  return {
-    "131": {
-      "inputs": {
-        "filename_prefix": "Banana_Edit",
-        "images": ["133", 0]
-      },
-      "class_type": "SaveImage",
-      "_meta": { "title": "保存图像" }
-    },
-    "132": {
-      "inputs": { "image": imageFilename },
-      "class_type": "LoadImage",
-      "_meta": { "title": "加载图像" }
-    },
-    "390": {
-      "inputs": { "image": ["132", 0], "shift": 3 },
-      "class_type": "FluxKontextImageScale",
-      "_meta": { "title": "FluxKontextImageScale" }
-    },
-    "133": {
-      "inputs": {
-        "prompt": prompt,
-        "api_key": "sk-gZkY0iMYggZ3jlaTQ1g5Rbq8veIc9tPUQvGOULxkqFJz8X8D",
-        "api_base_url": ["147", 0],
-        "model_type": ["141", 0],
-        "batch_size": 1,
-        "aspect_ratio": "Auto",
-        "seed": seed,
-        "top_p": 0.95,
-        "image_size": "2K",
-        "绕过代理": true,
-        "image_1": ["390", 0]
-      },
-      "class_type": "HeiHe001_BananaImageNode",
-      "_meta": { "title": "Banana-API-2" }
-    },
-    "141": {
-      "inputs": { "value": "「Rim」gemini-3-pro-image-preview" },
-      "class_type": "PrimitiveString",
-      "_meta": { "title": "字符串" }
-    },
-    "147": {
-      "inputs": { "value": "http://152.53.90.90:3000" },
-      "class_type": "PrimitiveString",
-      "_meta": { "title": "字符串" }
-    }
-  };
-};
-
 /**
  * SeedVR2 图像放大工作流
  */
