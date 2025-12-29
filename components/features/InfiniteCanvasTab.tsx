@@ -130,32 +130,35 @@ interface ResizeState {
     startH: number;
 }
 
-// --- Memoized Node Wrapper for performance ---
+// --- Memoized Node Wrapper ---
 const MemoNode = React.memo(({ 
   item, 
   isActive, 
   isSelected, 
   onMouseDown, 
   onTouchStart,
-  renderContent 
+  renderContent,
+  isDragging
 }: { 
   item: CanvasItem, 
   isActive: boolean, 
   isSelected: boolean,
   onMouseDown: (e: MouseEvent, id: string) => void,
   onTouchStart: (e: TouchEvent, id: string) => void,
-  renderContent: (item: CanvasItem) => React.ReactNode
+  renderContent: (item: CanvasItem) => React.ReactNode,
+  isDragging: boolean
 }) => {
   return (
     <div 
-      className={`absolute group transition-shadow duration-300 rounded-[32px] ${isSelected ? 'selection-active z-20 shadow-2xl' : isActive ? 'shadow-premium z-10' : 'shadow-soft'}`} 
+      className={`absolute group rounded-[40px] ${isSelected ? 'selection-active z-20' : isActive ? 'shadow-premium z-10' : 'shadow-soft'} ${isDragging ? 'cursor-grabbing select-none' : 'cursor-default'}`} 
       style={{ 
         left: item.x, 
         top: item.y, 
         width: item.width, 
         height: item.height, 
         zIndex: item.zIndex,
-        willChange: 'left, top, width, height'
+        transition: isDragging ? 'none' : 'box-shadow 0.3s ease, transform 0.3s ease',
+        willChange: 'left, top, width, height, transform'
       }} 
       onMouseDown={(e) => onMouseDown(e, item.id)} 
       onTouchStart={(e) => onTouchStart(e, item.id)}
@@ -183,8 +186,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const [notification, setNotification] = useState<Notification | null>(null);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [globalHistory, setGlobalHistory] = useState<HistoryEntry[]>([]);
-  
-  // 新增：画布资源选择器状态
   const [pickingRefForNodeId, setPickingRefForNodeId] = useState<string | null>(null);
 
   const mousePosRef = useRef({ x: 0, y: 0 });
@@ -203,7 +204,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     notifyTimeoutRef.current = window.setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  // Sync to global history whenever items change
   useEffect(() => {
     const allHistory = items.flatMap(item => item.history.map(h => ({ ...h, timestamp: h.timestamp || Date.now() })));
     setGlobalHistory(prev => {
@@ -236,7 +236,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       resetView();
       return;
     }
-    
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     items.forEach(item => {
       minX = Math.min(minX, item.x);
@@ -244,16 +243,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       maxX = Math.max(maxX, item.x + item.width);
       maxY = Math.max(maxY, item.y + item.height);
     });
-
     const rectW = maxX - minX;
     const rectH = maxY - minY;
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
-
     const scale = Math.min((viewportW * 0.85) / rectW, (viewportH * 0.85) / rectH, 1.5);
     const centerX = minX + rectW / 2;
     const centerY = minY + rectH / 2;
-
     setView({
       x: viewportW / 2 - (centerX * scale),
       y: viewportH / 2 - (centerY * scale),
@@ -268,9 +264,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       else resetView();
       return;
     }
-    
     const selectedItems = items.filter(i => selectedIds.has(i.id));
-    
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     selectedItems.forEach(item => {
       minX = Math.min(minX, item.x);
@@ -278,16 +272,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       maxX = Math.max(maxX, item.x + item.width);
       maxY = Math.max(maxY, item.y + item.height);
     });
-
     const rectW = maxX - minX;
     const rectH = maxY - minY;
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
-
     const scale = Math.min((viewportW * 0.8) / rectW, (viewportH * 0.8) / rectH, 1.2);
     const centerX = minX + rectW / 2;
     const centerY = minY + rectH / 2;
-
     setView({
       x: viewportW / 2 - (centerX * scale),
       y: viewportH / 2 - (centerY * scale),
@@ -298,11 +289,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const getAdaptiveFontSize = (text: string) => {
     const len = text.length;
-    if (len < 20) return 'text-[56px]'; 
-    if (len < 60) return 'text-[44px]';
-    if (len < 120) return 'text-[32px]';
-    if (len < 240) return 'text-[24px]';
-    return 'text-[18px] leading-relaxed'; 
+    if (len < 20) return 'text-[64px]'; 
+    if (len < 60) return 'text-[48px]';
+    if (len < 120) return 'text-[36px]';
+    if (len < 240) return 'text-[28px]';
+    return 'text-[22px] leading-relaxed'; 
   };
 
   const copyPromptToActiveNode = useCallback((text: string, sourceNodeId: string) => {
@@ -347,13 +338,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const viewportH = window.innerHeight;
     const targetW = 512;
     const targetH = 512;
-    
     const worldX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
     const worldY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
-    
     const id = Math.random().toString(36).substr(2, 9);
     const newZ = topZ + 1;
-    
     const newItem: ImageItem = {
       id,
       type: 'image',
@@ -366,7 +354,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       history: [{ ...entry }],
       historyIndex: 0
     };
-    
     setTopZ(newZ);
     setItems(prev => [...prev, newItem]);
     setActiveItemId(id);
@@ -418,7 +405,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const addNodeFromText = useCallback((text: string) => {
     recordHistory();
     const id = Math.random().toString(36).substr(2, 9);
-    
     let targetX, targetY;
     if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
@@ -436,7 +422,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     } else {
         targetX = 0; targetY = 0;
     }
-
     const newItem: GeneratorItem = {
       id,
       type: 'generator',
@@ -462,7 +447,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         referenceImages: []
       }
     };
-
     setTopZ(prev => prev + 1);
     setItems(prev => [...prev, newItem]);
     setActiveItemId(id);
@@ -475,7 +459,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         if ((e.target as HTMLElement).matches('input, textarea')) return;
         const text = e.clipboardData?.getData('text');
         if (!text) return;
-        
         if (text === CLIPBOARD_MARKER) {
             e.preventDefault();
             pasteItems();
@@ -507,15 +490,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const handleAddImageFromAgent = useCallback((e: any) => {
     const { src, prompt, parentIds } = e.detail;
     if (!src) return;
-
     recordHistory();
     const id = Math.random().toString(36).substr(2, 9);
-    
     const targetW = 512;
     const targetH = 512;
     let finalX: number = 0;
     let finalY: number = 0;
-
     if (parentIds && parentIds.length > 0) {
       const parent = items.find(i => i.id === parentIds[0]);
       if (parent) {
@@ -531,7 +511,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       finalX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
       finalY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
     }
-
     setTopZ(prevZ => {
       const newZ = prevZ + 1;
       setItems(prev => {
@@ -552,7 +531,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       });
       return newZ;
     });
-
     setActiveItemId(id);
     setSelectedIds(new Set([id]));
     showNotification("Asset synthesized with multi-point orchestration", "success");
@@ -571,14 +549,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             if (showHistoryPanel) { setShowHistoryPanel(false); return; }
             if (previewImage) setPreviewImage(null); if (editingImage) setEditingImage(null); return; 
         }
-        
         if (e.key.toLowerCase() === 'f' && !(e.target as HTMLElement).matches('input, textarea')) { 
             e.preventDefault(); 
             if (selectedIds.size > 0) centerSelection();
             else if (items.length > 0) fitAllItems();
             else resetView(); 
         }
-        
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') { if (!(e.target as HTMLElement).matches('input, textarea')) { e.preventDefault(); performUndo(); } }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') { if (selectedIds.size > 0 && !(e.target as HTMLElement).matches('input, textarea')) { setClipboard(items.filter(i => selectedIds.has(i.id))); navigator.clipboard.writeText(CLIPBOARD_MARKER).catch(() => {}); } }
         if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) { if (!(e.target as HTMLElement).matches('input, textarea')) { recordHistory(); setItems(prev => prev.filter(i => !selectedIds.has(i.id))); setSelectedIds(new Set()); setActiveItemId(null); } }
@@ -614,28 +590,31 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     if ((e.target as HTMLElement).closest('input, textarea, button, label')) return;
     const isCanvasBg = e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-bg');
     if (isCanvasBg) {
-        if (isSpacePressed || e.button === 1) { setDragMode('canvas'); } else {
-            setDragMode('selection'); if (!e.shiftKey) { setSelectedIds(new Set()); setActiveItemId(null); }
+        if (isSpacePressed || e.button === 1) { 
+            setDragMode('canvas'); 
+            setIsDragging(true);
+            setDragStart({ x: e.clientX, y: e.clientY });
+        } else {
+            setDragMode('selection'); 
+            if (!e.shiftKey) { setSelectedIds(new Set()); setActiveItemId(null); }
             if (containerRef.current) { const rect = containerRef.current.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y }); }
+            setIsDragging(true); 
+            setDragStart({ x: e.clientX, y: e.clientY });
         }
     }
-    setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseMove = (e: MouseEvent) => {
     mousePosRef.current = { x: e.clientX, y: e.clientY };
-    
     if (resizeState) {
         const dx = (e.clientX - resizeState.startX) / view.scale; 
         const dy = (e.clientY - resizeState.startY) / view.scale;
         setItems(prev => prev.map(item => item.id === resizeState.id ? { ...item, width: Math.max(128, resizeState.startW + dx), height: Math.max(128, resizeState.startH + dy) } : item));
         return; 
     }
-    
     if (isDragging) {
       const dx = e.clientX - dragStart.x; 
       const dy = e.clientY - dragStart.y;
-      
       if (dragMode === 'item') {
         const scale = view.scale;
         setItems(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, x: item.x + dx / scale, y: item.y + dy / scale } : item));
@@ -710,16 +689,18 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const clientX = e.clientX; const clientY = e.clientY;
     const worldX = (clientX - view.x) / view.scale; const worldY = (clientY - view.y) / view.scale;
     const targetNode = items.find(item => item.type === 'generator' && worldX >= item.x && worldX <= item.x + item.width && worldY >= item.y && worldY <= item.y + item.height);
-
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0] as File; if (!file.type.startsWith('image/')) return;
       recordHistory(); const reader = new FileReader();
       reader.onload = (ev) => {
         const src = ev.target?.result as string;
         if (targetNode && targetNode.type === 'generator') {
-          const currentRefs = (targetNode as GeneratorItem).data.referenceImages || [];
-          if (currentRefs.length < 9) { updateItemData(targetNode.id, { referenceImages: [...currentRefs, src] }); }
-          return;
+          const isNanoModel = (targetNode as GeneratorItem).data.model.startsWith('nano-banana');
+          if (isNanoModel) {
+            const currentRefs = (targetNode as GeneratorItem).data.referenceImages || [];
+            if (currentRefs.length < 9) { updateItemData(targetNode.id, { referenceImages: [...currentRefs, src] }); }
+            return;
+          }
         }
         const img = new Image(); img.src = src;
         img.onload = () => {
@@ -743,7 +724,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           else if (item.type === 'generator' && item.data.resultImage) { handleImageClickForChat(item.data.resultImage, item.id); return; }
         }
       }
-
       const newZ = topZ + 1; setTopZ(newZ);
       setItems(prev => prev.map(i => i.id === id ? { ...i, zIndex: newZ } : i));
       if (e.shiftKey) {
@@ -751,7 +731,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           if (newSelected.has(id)) { newSelected.delete(id); if (activeItemId === id) setActiveItemId(null); } else { newSelected.add(id); setActiveItemId(id); }
           setSelectedIds(newSelected);
       } else { if (!selectedIds.has(id)) { setSelectedIds(new Set([id])); setActiveItemId(id); } else { setActiveItemId(id); } }
-      if (!(e.target as HTMLElement).closest('input, textarea, button')) { recordHistory(); setDragMode('item'); setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY }); }
+      if (!(e.target as HTMLElement).closest('input, textarea, button')) { 
+          recordHistory(); 
+          setDragMode('item'); 
+          setIsDragging(true); 
+          setDragStart({ x: e.clientX, y: e.clientY }); 
+      }
   }, [topZ, items, selectedIds, activeItemId, handleImageClickForChat, recordHistory]);
 
   const addGeneratorNode = () => {
@@ -791,7 +776,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const translateNodePrompt = async (id: string) => {
     const item = items.find(i => i.id === id) as GeneratorItem;
     if (!item || !item.data.prompt.trim() || item.data.isTranslating) return;
-    
     updateItemData(id, { isTranslating: true });
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -809,15 +793,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   };
 
   const updateImageItem = (id: string, partialData: Partial<ImageItem>) => { setItems(prev => prev.map(item => (item.id === id && item.type === 'image') ? { ...item, ...partialData } : item)); };
-
   const switchImageVersion = (itemId: string, index: number) => { recordHistory(); setItems(prev => prev.map(item => (item.id === itemId && item.type === 'image') ? { ...item, src: (item as ImageItem).history[index].src, historyIndex: index } : item)); };
-
   const removeImageVersion = (itemId: string, index: number, e: MouseEvent) => { e.stopPropagation(); recordHistory(); setItems(prev => prev.map(item => { if (item.id === itemId && item.type === 'image') { const imgItem = item as ImageItem; if (imgItem.history.length <= 1) return imgItem; const newHistory = imgItem.history.filter((_, i) => i !== index); let newIndex = imgItem.historyIndex; if (newIndex >= index) newIndex = Math.max(0, newIndex - 1); return { ...imgItem, history: newHistory, historyIndex: newIndex, src: newHistory[newIndex].src }; } return item; })); };
-
   const switchGeneratorVersion = (itemId: string, index: number) => { recordHistory(); setItems(prev => prev.map(item => (item.id === itemId && item.type === 'generator') ? { ...item, data: { ...(item as GeneratorItem).data, resultImage: (item as GeneratorItem).history[index].src, mode: 'result' }, historyIndex: index } : item)); };
-
   const removeGeneratorVersion = (itemId: string, index: number, e: MouseEvent) => { e.stopPropagation(); recordHistory(); setItems(prev => prev.map(item => { if (item.id === itemId && item.type === 'generator') { const genItem = item as GeneratorItem; if (genItem.history.length <= 1) return genItem; const newHistory = genItem.history.filter((_, i) => i !== index); let newIndex = genItem.historyIndex; if (newIndex >= index) newIndex = Math.max(0, newIndex - 1); return { ...genItem, history: newHistory, historyIndex: newIndex, data: { ...genItem.data, resultImage: newHistory[newIndex].src } }; } return item; })); };
-
   const convertSrcToFile = async (src: string): Promise<File> => { const res = await fetch(src); const blob = await res.blob(); return new File([blob], "source.png", { type: "image/png" }); };
 
   const regenerateImage = async (itemId: string) => {
@@ -1028,7 +1007,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       const key = `${parent.id}-${item.id}`;
                       if (!drawnConnections.has(key)) {
                           drawnConnections.add(key); const isActive = selectedIds.has(item.id) || selectedIds.has(parent.id);
-                          connections.push(<line key={key} x1={parent.x + parent.width / 2} y1={parent.y + parent.height / 2} x2={item.x + item.width / 2} y2={item.y + item.height / 2} stroke={isActive ? "#3b82f6" : "#e2e8f0"} strokeWidth={isActive ? "2" : "1.2"} strokeDasharray={isActive ? "10,10" : "6,6"} className={`transition-all duration-300 connection-line ${isActive ? 'opacity-100 animate-flow' : 'opacity-30'}`} />);
+                          connections.push(<line key={key} x1={parent.x + parent.width / 2} y1={parent.y + parent.height / 2} x2={item.x + item.width / 2} y2={item.y + item.height / 2} stroke={isActive ? "#3b82f6" : "#e2e8f0"} strokeWidth={isActive ? "2.5" : "1.5"} strokeDasharray={isActive ? "12,8" : "6,6"} className={`transition-all duration-300 connection-line ${isActive ? 'opacity-100 animate-flow' : 'opacity-20'}`} />);
                       }
                   }
               });
@@ -1047,43 +1026,43 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     currentMode: EditMode = 'qwen',
     onModeChange: (m: EditMode) => void
   ) => (
-      <div className={`absolute bottom-6 left-6 right-20 transition-all duration-500 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()} >
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-center gap-1 bg-white/80 backdrop-blur-md p-1 rounded-full border border-slate-100 self-start shadow-sm mb-1">
+      <div className={`absolute bottom-6 left-6 right-20 transition-all duration-700 z-50 ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100'}`} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onWheel={e => e.stopPropagation()} >
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-center gap-1.5 bg-white/90 backdrop-blur-2xl p-1 rounded-full border border-white shadow-premium self-start mb-1">
               {(['qwen', 'nano-banana-pro', 'nano-banana-fast'] as EditMode[]).map(m => (
-                <button key={m} onClick={() => onModeChange(m)} className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all ${currentMode === m ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}> {m === 'qwen' ? 'Qwen' : m.replace('nano-banana-', '').toUpperCase()} </button>
+                <button key={m} onClick={() => onModeChange(m)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${currentMode === m ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}> {m === 'qwen' ? 'Qwen' : m.replace('nano-banana-', '').toUpperCase()} </button>
               ))}
             </div>
-            <div className="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-soft border border-white/60 bg-white/80 backdrop-blur-3xl">
-                <input type="text" className="flex-1 bg-transparent border-none text-xs font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none px-3 font-sans" placeholder={`Paint edit with ${currentMode === 'qwen' ? 'Qwen' : 'Nano'}...`} value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
-                <button onClick={onExecute} disabled={isEditing || !prompt} className="text-white rounded-xl w-8 h-8 flex items-center justify-center transition-all disabled:opacity-50 shadow-lg bg-slate-950 hover:scale-105 active:scale-95">
-                    {isEditing ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
+            <div className="glass-panel p-2 rounded-2xl flex items-center gap-2 shadow-premium border border-white/60 bg-white/80 backdrop-blur-3xl">
+                <input type="text" className="flex-1 bg-transparent border-none text-[13px] font-bold text-slate-900 placeholder:text-slate-200 focus:outline-none px-4 font-sans" placeholder={`Paint edit with ${currentMode === 'qwen' ? 'Qwen' : 'Nano'}...`} value={prompt || ''} onChange={e => onPromptChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && onExecute()} />
+                <button onClick={onExecute} disabled={isEditing || !prompt} className="text-white rounded-xl w-10 h-10 flex items-center justify-center transition-all disabled:opacity-50 shadow-2xl bg-slate-950 hover:scale-105 active:scale-95">
+                    {isEditing ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
             </div>
           </div>
-          {isEditing && <div className="absolute -top-3 left-0 w-full h-1 bg-slate-100 rounded-full overflow-hidden"><div className="h-full transition-all duration-300 bg-blue-600" style={{ width: `${progress}%` }}></div></div>}
+          {isEditing && <div className="absolute -top-4 left-0 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full transition-all duration-300 bg-blue-600" style={{ width: `${progress}%` }}></div></div>}
       </div>
   );
 
-  const renderResizeHandle = (itemId: string) => ( <div className="absolute bottom-0 right-0 w-8 h-8 z-50 cursor-se-resize flex items-end justify-end p-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onMouseDown={(e) => handleResizeStart(e, itemId)}> <div className="w-3 h-3 border-b-2 border-r-2 border-blue-500 rounded-br-sm" /> </div> );
+  const renderResizeHandle = (itemId: string) => ( <div className="absolute bottom-0 right-0 w-10 h-10 z-50 cursor-se-resize flex items-end justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity" onMouseDown={(e) => handleResizeStart(e, itemId)}> <div className="w-4 h-4 border-b-2 border-r-2 border-slate-300 rounded-br-lg" /> </div> );
 
   const renderPromptFloat = (prompt: string, steps?: number, cfg?: number, model?: string, nodeId?: string) => (
-      <div className="absolute top-0 left-full h-full pl-6 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-all duration-500 pointer-events-none group-hover:pointer-events-auto transform translate-x-[-15px] group-hover:translate-x-0" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-          <div className="w-72 max-h-[80%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-2xl shadow-premium border border-white/60 origin-left overflow-hidden relative">
-              {copyFeedbackId === nodeId && <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[9px] font-black px-3 py-1.5 rounded-full animate-bounce shadow-xl z-[60] tracking-widest uppercase">Copied</div>}
-              <div className="p-7 overflow-y-auto custom-scrollbar flex-1">
-                  <div className="flex items-center justify-between mb-5">
-                      <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Metadata</span>
-                      <button onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }} className="p-2.5 hover:bg-slate-50 rounded-2xl text-slate-300 hover:text-slate-950 transition-all active:scale-90" title="Copy Prompt"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+      <div className="absolute top-0 left-full h-full pl-8 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-all duration-700 pointer-events-none group-hover:pointer-events-auto transform translate-x-[-20px] group-hover:translate-x-0" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+          <div className="w-80 max-h-[85%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-3xl shadow-premium border border-white origin-left overflow-hidden relative">
+              {copyFeedbackId === nodeId && <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-full animate-bounce shadow-2xl z-[60] tracking-[0.2em] uppercase">Copied</div>}
+              <div className="p-9 overflow-y-auto custom-scrollbar flex-1">
+                  <div className="flex items-center justify-between mb-6">
+                      <span className="text-[11px] font-black text-slate-300 uppercase tracking-[0.3em]">Metadata</span>
+                      <button onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-300 hover:text-slate-950 transition-all active:scale-90" title="Copy Prompt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                   </div>
-                  <div className="text-xs text-slate-700 font-bold leading-relaxed whitespace-pre-wrap font-sans select-text cursor-pointer hover:text-blue-600 bg-slate-50 p-5 rounded-xl border border-slate-100/50 transition-all group/p" onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }}> {prompt} <div className="mt-4 opacity-0 group-hover/p:opacity-100 transition-opacity text-[10px] font-black text-blue-500 uppercase tracking-widest">Tap to sync</div> </div>
+                  <div className="text-[13px] text-slate-700 font-bold leading-relaxed whitespace-pre-wrap font-sans select-text cursor-pointer hover:text-blue-600 bg-slate-50/50 p-6 rounded-2xl border border-slate-100/50 transition-all group/p" onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }}> {prompt} <div className="mt-5 opacity-0 group-hover/p:opacity-100 transition-opacity text-[9px] font-black text-blue-500 uppercase tracking-[0.3em]">Tap to Sync Instruction</div> </div>
               </div>
-              <div className="p-6 bg-slate-50/50 backdrop-blur-sm border-t border-slate-100/50 flex items-center justify-between shrink-0">
-                  <div className="flex gap-5">
-                      {steps && <div className="flex flex-col"><span className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-0.5">Steps</span><span className="text-xs font-mono font-bold text-slate-950">{steps}</span></div>}
-                      {cfg && <div className="flex flex-col"><span className="text-[8px] text-slate-400 uppercase font-black tracking-widest mb-0.5">CFG</span><span className="text-xs font-mono font-bold text-slate-950">{cfg}</span></div>}
+              <div className="p-8 bg-slate-50/30 backdrop-blur-sm border-t border-slate-100/50 flex items-center justify-between shrink-0">
+                  <div className="flex gap-6">
+                      {steps && <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1">Steps</span><span className="text-sm font-mono font-black text-slate-950">{steps}</span></div>}
+                      {cfg && <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1">CFG</span><span className="text-sm font-mono font-black text-slate-950">{cfg}</span></div>}
                   </div>
-                  {model && <div className="bg-slate-950 text-white px-3 py-1 rounded-lg"><span className="text-[9px] font-black uppercase tracking-tighter">{model}</span></div>}
+                  {model && <div className="bg-slate-950 text-white px-4 py-1.5 rounded-xl shadow-lg"><span className="text-[10px] font-black uppercase tracking-tighter">{model}</span></div>}
               </div>
           </div>
       </div>
@@ -1093,11 +1072,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
-            <div className={`w-full h-full glass-panel rounded-2xl overflow-hidden shadow-glass transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/20' : ''}`}>
-                {item.data.isGenerating && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-5"></div><span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">{item.data.progress}% Refining</span></div>}
-                <div className="w-full h-full p-8 flex flex-col relative bg-white/40"> <textarea className="w-full flex-1 bg-transparent font-bold text-slate-900 placeholder:text-slate-300/80 resize-none focus:outline-none text-sm leading-relaxed tracking-tight font-sans transition-all duration-200 border-b border-transparent focus:border-slate-100" placeholder="Instruct refinement..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} /> </div>
+            <div className={`w-full h-full glass-panel rounded-[40px] overflow-hidden shadow-glass transition-all duration-700 relative ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : ''}`}>
+                {item.data.isGenerating && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-12 h-12 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-6"></div><span className="text-[11px] font-black text-slate-400 tracking-[0.4em] uppercase">{item.data.progress}% Refining</span></div>}
+                <div className="w-full h-full p-10 flex flex-col relative bg-white/40"> <textarea className="w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-200 resize-none focus:outline-none text-[15px] leading-relaxed tracking-tight font-sans transition-all duration-300 border-b border-transparent focus:border-slate-100" placeholder="Instruct refinement..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} /> </div>
             </div>
-            <div className={`absolute top-full left-0 w-full flex justify-center pt-5 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-2 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} disabled={!item.data.targetId} className="bg-slate-950 text-white px-8 py-3 rounded-full shadow-premium text-[10px] font-black tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-2.5 uppercase disabled:opacity-50"><span>Commit Edit</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
+            <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} disabled={!item.data.targetId} className="bg-slate-950 text-white px-10 py-4 rounded-full shadow-premium text-[11px] font-black tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-4 uppercase disabled:opacity-50"><span>Commit Edit</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button></div>
             {renderResizeHandle(item.id)}
         </div>
       );
@@ -1108,30 +1087,30 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       return (
       <div className="relative group w-full h-full select-none" onDoubleClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }}>
           {currentEntry?.prompt && renderPromptFloat(currentEntry.prompt, currentEntry.steps, currentEntry.cfg, undefined, item.id)}
-          <div className="w-full h-full rounded-2xl shadow-glass transition-all duration-500 bg-white overflow-hidden relative border border-slate-100/50">
-              {(item.isRegenerating || item.isUpscaling) && <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-40 flex flex-col items-center justify-center"><div className="w-8 h-8 border-2 border-slate-100 border-t-blue-500 rounded-full animate-spin mb-3"></div><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.isRegenerating ? 'Redrawing' : `Optimizing ${Math.round(item.upscaleProgress || 0)}%`}</span></div>}
+          <div className="w-full h-full rounded-[40px] shadow-glass transition-all duration-700 bg-white overflow-hidden relative border border-slate-100/30">
+              {(item.isRegenerating || item.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-xl z-40 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-blue-500 rounded-full animate-spin mb-4"></div><span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">{item.isRegenerating ? 'Redrawing' : `Optimizing ${Math.round(item.upscaleProgress || 0)}%`}</span></div>}
               {item.history.length > 1 && (
-                  <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                  <div className="absolute top-6 left-6 flex gap-3 z-40 max-w-[85%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                     {item.history.map((hist, idx) => (
                         <div key={idx} className="relative group/thumb">
-                            <button onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button>
-                            <button onClick={(e) => removeImageVersion(item.id, idx, e)} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                            <button onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }} className={`w-10 h-10 rounded-xl overflow-hidden border-2 shadow-soft transition-all duration-500 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button>
+                            <button onClick={(e) => removeImageVersion(item.id, idx, e)} className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-xl hover:bg-rose-600 scale-75 group-hover/thumb:scale-100 border border-white"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                         </div>
                     ))}
                 </div>
               )}
-              <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.src} alt="artwork" className="max-w-full max-h-full object-contain pointer-events-none select-none" /></div>
+              <div className="w-full h-full flex items-center justify-center bg-slate-50/30"><img src={item.src} alt="artwork" className="max-w-full max-h-full object-contain pointer-events-none select-none" /></div>
               {renderEditOverlay( item.id, !!item.isEditing, item.editProgress || 0, item.editPrompt, (val) => updateImageItem(item.id, { editPrompt: val }), () => executeEdit(item.id, item.editPrompt || ''), item.editMode || 'qwen', (m) => updateImageItem(item.id, { editMode: m }) )}
-              <div className={`absolute bottom-5 right-5 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
+              <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-500 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                  {!item.isRegenerating && !item.isUpscaling && (
-                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[10px] font-black tracking-tighter">4K</span></button>
-                        {item.historyIndex >= 0 && item.history[item.historyIndex].prompt !== "Uploaded image" && <button onClick={(e) => { e.stopPropagation(); regenerateImage(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Regenerate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>}
-                        <button onClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-amber-500 active:scale-95 transition-all" title="Manual Edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></>
+                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-11 h-11 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-115 active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black tracking-tighter">4K</span></button>
+                        {item.historyIndex >= 0 && item.history[item.historyIndex].prompt !== "Uploaded image" && <button onClick={(e) => { e.stopPropagation(); regenerateImage(item.id); }} className="w-11 h-11 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-115 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Regenerate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-1000" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }} className="w-11 h-11 bg-white/95 backdrop-blur-2xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-115 hover:text-amber-500 active:scale-95 transition-all" title="Manual Edit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></>
                  )}
-                <a href={item.src} download={`studio-export-${item.id}.png`} className="w-9 h-9 bg-slate-950 text-white rounded-xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
+                <a href={item.src} download={`studio-export-${item.id}.png`} className="w-11 h-11 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-115" onClick={e => e.stopPropagation()} title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
               </div>
           </div>
-          <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+          <button className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-500 hover:scale-115 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           {renderResizeHandle(item.id)}
       </div>
   );
@@ -1144,7 +1123,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const displaySteps = isInput ? item.data.steps : currentEntry?.steps;
       const displayCfg = isInput ? item.data.cfg : currentEntry?.cfg;
       const displayModel = isInput ? item.data.model : currentEntry?.model;
-
+      const isNanoModel = item.data.model.startsWith('nano-banana');
       const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
           const files = Array.from(e.target.files) as File[];
@@ -1158,14 +1137,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           });
         }
       };
-
       const removeRefImage = (idx: number, e: MouseEvent) => {
         e.stopPropagation();
         const currentRefs = item.data.referenceImages || [];
         updateItemData(item.id, { referenceImages: currentRefs.filter((_, i) => i !== idx) });
       };
-
-      // 从画布资产中选取一张图
       const addFromCanvas = (src: string) => {
         const currentRefs = item.data.referenceImages || [];
         if (currentRefs.length < 9 && !currentRefs.includes(src)) {
@@ -1174,97 +1150,84 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         }
         setPickingRefForNodeId(null);
       };
-
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
             {displayPrompt && renderPromptFloat(displayPrompt, displaySteps, displayCfg, displayModel, item.id)}
             
-            <div className={`absolute bottom-full left-0 w-full flex justify-center pb-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
-                <div className="flex items-center gap-1.5 p-1.5 bg-white rounded-full shadow-premium border border-slate-100/50 flex-wrap justify-center">
-                    <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'flux' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
-                    <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'sdxl' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
-                    <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
-                    <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
-                    
-                    {item.data.model === 'flux' && (
-                        <>
-                            <div className="w-[1px] h-4 bg-slate-100 mx-1"></div>
-                            <button 
-                                onClick={() => updateItemData(item.id, { useLora: !item.data.useLora })}
-                                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all ${item.data.useLora ? 'bg-blue-50 text-blue-600' : 'text-slate-300 hover:text-slate-400'}`}
-                            >
-                                <div className={`w-2 h-2 rounded-full ${item.data.useLora ? 'bg-blue-600' : 'border border-slate-200'}`} />
-                                <span className="text-[10px] font-black tracking-[0.1em] uppercase">LoRA</span>
-                            </button>
-                        </>
-                    )}
+            {/* Model & Config bar: Only visible in input mode */}
+            {isInput && (
+              <div className={`absolute bottom-full left-0 w-full flex justify-center pb-10 opacity-0 group-hover:opacity-100 transition-all duration-700 transform translate-y-6 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
+                  <div className="flex items-center gap-2 p-2 bg-white/90 backdrop-blur-2xl rounded-full shadow-premium border border-white flex-wrap justify-center">
+                      <button className={`px-5 py-2.5 text-[11px] tracking-[0.2em] font-black rounded-full transition-all ${item.data.model === 'flux' ? 'bg-slate-950 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
+                      <button className={`px-5 py-2.5 text-[11px] tracking-[0.2em] font-black rounded-full transition-all ${item.data.model === 'sdxl' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
+                      <button className={`px-5 py-2.5 text-[11px] tracking-[0.2em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
+                      <button className={`px-5 py-2.5 text-[11px] tracking-[0.2em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
+                      {item.data.model === 'flux' && (
+                          <>
+                              <div className="w-[1px] h-5 bg-slate-100 mx-2"></div>
+                              <button onClick={() => updateItemData(item.id, { useLora: !item.data.useLora })} className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-all ${item.data.useLora ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'text-slate-300 hover:text-slate-400 border border-transparent'}`}>
+                                  <div className={`w-2.5 h-2.5 rounded-full ${item.data.useLora ? 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]' : 'border border-slate-200'}`} />
+                                  <span className="text-[11px] font-black tracking-[0.2em] uppercase">LoRA</span>
+                              </button>
+                          </>
+                      )}
+                      <div className="w-[1px] h-5 bg-slate-100 mx-3"></div>
+                      <div className="relative flex items-center gap-1.5 px-1 size-menu-container">
+                          <button className="px-5 py-2.5 text-[11px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-2 uppercase tracking-[0.2em]" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
+                          {activeSizeMenuId === item.id && (
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-white/95 backdrop-blur-3xl rounded-3xl shadow-premium border border-white p-2.5 z-[60] min-w-[220px] animate-fade-in flex flex-col gap-1.5 origin-bottom" onWheel={e => e.stopPropagation()}>
+                                  <div className="text-[10px] font-black text-slate-300 px-4 py-3 uppercase tracking-[0.3em]">Aspect Presets</div>
+                                  {SIZE_PRESETS.map(preset => (
+                                      <button key={preset.label} className="text-left px-5 py-3 text-[12px] text-slate-700 hover:bg-slate-50 rounded-2xl hover:text-slate-950 transition-all flex justify-between items-center group/opt" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-bold">{preset.label}</span><span className="text-[10px] text-slate-300 font-mono font-bold group-hover/opt:text-slate-500">{preset.w}×{preset.h}</span></button>
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              </div>
+            )}
 
-                    <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
-                    <div className="relative flex items-center gap-1 px-1 size-menu-container">
-                        <button className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-1 uppercase tracking-widest" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
-                        {activeSizeMenuId === item.id && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-2xl shadow-premium border border-slate-100 p-2 z-[60] min-w-[200px] animate-fade-in flex flex-col gap-1 origin-bottom" onWheel={e => e.stopPropagation()}>
-                                <div className="text-[9px] font-black text-slate-300 px-3 py-2 uppercase tracking-[0.2em]">Aspect Presets</div>
-                                {SIZE_PRESETS.map(preset => (
-                                    <button key={preset.label} className="text-left px-4 py-2.5 text-[11px] text-slate-700 hover:bg-slate-50 rounded-xl hover:text-slate-950 transition-all flex justify-between items-center group/opt" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-bold">{preset.label}</span><span className="text-[9px] text-slate-300 font-mono group-hover/opt:text-slate-500">{preset.w}×{preset.h}</span></button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className={`w-full h-full glass-panel rounded-[32px] overflow-hidden shadow-glass transition-all duration-700 relative border border-white/60 ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : isActive ? 'ring-2 ring-blue-500/40' : ''}`}>
-                {(item.data.isGenerating || item.data.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-[55] flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-6"></div><span className="text-[10px] font-black text-slate-400 tracking-[0.3em] uppercase">{item.data.isGenerating ? `${item.data.progress}% SYNTHESIZING` : `OPTIMIZING ${Math.round(item.data.upscaleProgress || 0)}%`}</span></div>}
-                
+            <div className={`w-full h-full glass-panel rounded-[48px] overflow-hidden shadow-glass transition-all duration-1000 relative border border-white/60 bg-white/30 backdrop-blur-xl ${item.data.isGenerating ? 'ring-8 ring-blue-500/5' : isActive ? 'ring-2 ring-blue-500/30' : ''}`}>
+                {(item.data.isGenerating || item.data.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-2xl z-[55] flex flex-col items-center justify-center"><div className="w-14 h-14 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-8"></div><span className="text-[12px] font-black text-slate-400 tracking-[0.5em] uppercase">{item.data.isGenerating ? `${item.data.progress}% SYNTHESIZING` : `OPTIMIZING ${Math.round(item.data.upscaleProgress || 0)}%`}</span></div>}
                 {isInput ? (
-                    <div className="w-full h-full p-12 flex flex-col items-center justify-center relative bg-white/40">
+                    <div className="w-full h-full p-16 flex flex-col items-center justify-center relative">
                         {item.history.length > 0 && (
-                            <div className="absolute top-6 left-6 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                            <div className="absolute top-8 left-8 flex gap-3 z-40 max-w-[85%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.history.map((hist, idx) => (
-                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-10 h-10 rounded-xl overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button></div>
+                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-12 h-12 rounded-2xl overflow-hidden border-2 shadow-soft transition-all duration-500 hover:scale-115 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button></div>
                                 ))}
                             </div>
                         )}
-                        
-                        <div className="absolute bottom-8 left-8 z-40 flex flex-wrap gap-2.5 max-w-[180px]" onMouseDown={e => e.stopPropagation()}>
+                        {isNanoModel && (
+                        <div className="absolute bottom-10 left-10 z-40 flex flex-wrap gap-3.5 max-w-[220px]" onMouseDown={e => e.stopPropagation()}>
                              {(item.data.referenceImages || []).map((ref, idx) => (
-                                <div key={idx} className="relative group/ref w-14 h-14 rounded-xl border border-white/80 shadow-premium overflow-hidden animate-fade-in hover:scale-110 transition-transform">
+                                <div key={idx} className="relative group/ref w-16 h-16 rounded-2xl border border-white shadow-premium overflow-hidden animate-fade-in hover:scale-115 transition-all">
                                    <img src={ref} className="w-full h-full object-cover" />
-                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full w-4 h-4 flex items-center justify-center shadow-lg opacity-0 group-hover/ref:opacity-100 transition-all border border-white"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-xl opacity-0 group-hover/ref:opacity-100 transition-all border border-white"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                                 </div>
                              ))}
-                             
                              {(item.data.referenceImages || []).length < 9 && (
                                 <div className="relative picker-container">
-                                    <button 
-                                      className={`w-14 h-14 rounded-xl border-2 border-dashed flex items-center justify-center transition-all hover:scale-110 active:scale-95 ${pickingRefForNodeId === item.id ? 'bg-blue-50 border-blue-400 text-blue-500' : 'bg-slate-50/40 border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400'}`}
-                                      onClick={(e) => { e.stopPropagation(); setPickingRefForNodeId(pickingRefForNodeId === item.id ? null : item.id); }}
-                                    >
-                                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
+                                    <button className={`w-16 h-16 rounded-2xl border-2 border-dashed flex items-center justify-center transition-all hover:scale-115 active:scale-95 ${pickingRefForNodeId === item.id ? 'bg-blue-50 border-blue-400 text-blue-500 shadow-inner' : 'bg-white/40 border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400'}`} onClick={(e) => { e.stopPropagation(); setPickingRefForNodeId(pickingRefForNodeId === item.id ? null : item.id); }}>
+                                       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
                                     </button>
-                                    
                                     {pickingRefForNodeId === item.id && (
-                                      <div className="absolute bottom-full left-0 mb-4 bg-white/90 backdrop-blur-3xl rounded-3xl shadow-2xl border border-white p-4 z-[70] w-72 animate-slide-up origin-bottom-left" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-                                          <div className="flex items-center justify-between mb-4 px-1">
-                                             <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">Add Context</span>
-                                             <button onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()} className="text-[8px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-600 transition-all">Upload File</button>
+                                      <div className="absolute bottom-full left-0 mb-5 bg-white/90 backdrop-blur-3xl rounded-[32px] shadow-2xl border border-white p-6 z-[70] w-80 animate-slide-up origin-bottom-left" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                                          <div className="flex items-center justify-between mb-5 px-1">
+                                             <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Context Hub</span>
+                                             <button onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()} className="text-[9px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-600 transition-all">Upload File</button>
                                           </div>
-                                          <div className="grid grid-cols-3 gap-2.5 max-h-[220px] overflow-y-auto no-scrollbar picker-grid">
+                                          <div className="grid grid-cols-3 gap-3.5 max-h-[260px] overflow-y-auto no-scrollbar picker-grid">
                                               {items.filter(i => (i.type === 'image' || (i.type === 'generator' && i.data.resultImage))).map((asset) => {
                                                   const src = asset.type === 'image' ? (asset as ImageItem).src : (asset as GeneratorItem).data.resultImage!;
                                                   return (
-                                                    <button 
-                                                      key={asset.id} 
-                                                      className="aspect-square rounded-xl overflow-hidden border border-slate-100 hover:border-blue-400 hover:scale-[1.05] transition-all shadow-soft"
-                                                      onClick={() => addFromCanvas(src)}
-                                                    >
+                                                    <button key={asset.id} className="aspect-square rounded-2xl overflow-hidden border border-slate-100 hover:border-blue-400 hover:scale-[1.08] transition-all shadow-soft" onClick={() => addFromCanvas(src)}>
                                                       <img src={src} className="w-full h-full object-cover" />
                                                     </button>
                                                   );
                                               })}
                                               {items.filter(i => (i.type === 'image' || (i.type === 'generator' && i.data.resultImage))).length === 0 && (
-                                                <div className="col-span-3 py-8 text-center"><p className="text-[9px] font-bold text-slate-300 uppercase leading-relaxed">No visual assets<br/>detected on canvas</p></div>
+                                                <div className="col-span-3 py-10 text-center"><p className="text-[10px] font-bold text-slate-300 uppercase leading-relaxed tracking-wider">Empty session assets</p></div>
                                               )}
                                           </div>
                                           <input type="file" id={`ref-upload-${item.id}`} className="hidden" accept="image/*" multiple onChange={handleRefUpload} />
@@ -1273,11 +1236,11 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                                 </div>
                              )}
                         </div>
-
+                        )}
                         <div className="relative w-full flex-1 flex flex-col group/input">
-                          <textarea rows={6} className={`w-full flex-1 bg-transparent font-black text-slate-950 placeholder:text-slate-200 resize-none focus:outline-none text-center leading-[1.1] tracking-tighter font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder="Synthesis Prompt..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
-                          <button onClick={() => translateNodePrompt(item.id)} disabled={!item.data.prompt.trim() || item.data.isTranslating} className="absolute bottom-0 right-0 p-3 text-slate-200 hover:text-blue-500 transition-all opacity-0 group-hover/input:opacity-100 disabled:opacity-5">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={item.data.isTranslating ? 'animate-spin' : ''}>
+                          <textarea rows={6} className={`w-full flex-1 bg-transparent font-black text-slate-950 placeholder:text-slate-100 resize-none focus:outline-none text-center leading-[1] tracking-tighter font-sans transition-all duration-500 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder="Define Output Concept..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
+                          <button onClick={() => translateNodePrompt(item.id)} disabled={!item.data.prompt.trim() || item.data.isTranslating} className="absolute bottom-0 right-0 p-4 text-slate-200 hover:text-blue-500 transition-all opacity-0 group-hover/input:opacity-100 disabled:opacity-5 active:scale-90">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={item.data.isTranslating ? 'animate-spin' : ''}>
                               <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
                             </svg>
                           </button>
@@ -1286,26 +1249,26 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 ) : (
                     <div className="w-full h-full relative group/image bg-white overflow-hidden" onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc: item.history[0]?.src || item.data.resultImage }); }}>
                         {item.history.length > 1 && (
-                            <div className="absolute top-6 left-6 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                            <div className="absolute top-8 left-8 flex gap-3 z-40 max-w-[85%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.history.map((hist, idx) => (
-                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-10 h-10 rounded-xl overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button></div>
+                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-12 h-12 rounded-2xl overflow-hidden border-2 shadow-soft transition-all duration-500 hover:scale-115 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button></div>
                                 ))}
                             </div>
                         )}
-                        <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.data.resultImage} className="max-w-full max-h-full object-contain pointer-events-none select-none" alt="result" /></div>
+                        <div className="w-full h-full flex items-center justify-center bg-slate-50/20"><img src={item.data.resultImage} className="max-w-full max-h-full object-contain pointer-events-none select-none" alt="result" /></div>
                         {renderEditOverlay( item.id, !!item.data.isEditing, item.data.editProgress || 0, item.data.editPrompt, (val) => updateItemData(item.id, { editPrompt: val }), () => executeEdit(item.id, item.data.editPrompt || ''), item.data.editMode || 'qwen', (m) => updateItemData(item.id, { editMode: m }) )}
-                        <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-3 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
+                        <div className={`absolute bottom-8 right-8 z-40 flex flex-col gap-4 items-end transition-opacity duration-500 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {!item.data.isGenerating && !item.data.isUpscaling && (
-                                <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
+                                <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-12 h-12 bg-white/95 backdrop-blur-2xl rounded-[18px] shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-115 active:scale-95 transition-all" title="4K Upscale"><span className="text-[12px] font-black tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-12 h-12 bg-white/95 backdrop-blur-2xl rounded-[18px] shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-115 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-1000" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
                              )}
-                             <button onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { mode: 'input' }); }} className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-900 rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-white hover:scale-110" title="Refine Idea"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
-                            <a href={item.data.resultImage} download={`studio-export-${item.id}.png`} className="w-10 h-10 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
+                             <button onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { mode: 'input' }); }} className="w-12 h-12 bg-white/60 backdrop-blur-xl border border-white/50 text-slate-900 rounded-[18px] flex items-center justify-center shadow-premium transition-all hover:bg-white hover:scale-115" title="Refine Idea"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                            <a href={item.data.resultImage} download={`studio-export-${item.id}.png`} className="w-12 h-12 bg-slate-950 text-white rounded-[18px] flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-115" onClick={e => e.stopPropagation()} title="Export"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
                         </div>
                     </div>
                 )}
             </div>
-            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-950 text-white px-10 py-4 rounded-full shadow-[0_20px_40px_rgba(0,0,0,0.2)] text-[11px] font-black tracking-[0.15em] hover:scale-105 active:scale-95 transition-all flex items-center gap-4 uppercase"><span>Generate Output</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
-            <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-8 h-8 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-10 opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-y-6 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-950 text-white px-12 py-5 rounded-full shadow-[0_30px_60px_rgba(0,0,0,0.3)] text-[12px] font-black tracking-[0.2em] hover:scale-105 active:scale-95 transition-all flex items-center gap-5 uppercase"><span>Initiate Synthesis</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
+            <button className={`absolute -top-2 -right-2 z-50 bg-white text-rose-500 w-10 h-10 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-500 hover:scale-115 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
            {renderResizeHandle(item.id)}
         </div>
       );
@@ -1321,72 +1284,55 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   }, [items, selectedIds, activeItemId, topZ, view, serverUrl, activeSizeMenuId, pickingRefForNodeId]);
 
   return (
-    <div className="h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-200">
+    <div className={`h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-950 selection:text-white ${isDragging && dragMode === 'canvas' ? 'cursor-grabbing' : ''}`}>
       <style>{`
-          @keyframes flowAnimation { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
+          @keyframes flowAnimation { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
           .animate-flow { animation: flowAnimation 0.8s linear infinite; will-change: stroke-dashoffset; }
           .custom-scrollbar::-webkit-scrollbar { width: 4px; }
           .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-          .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 2px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
           @keyframes slideDown { from { transform: translate(-50%, -100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-          .animate-slide-down { animation: slideDown 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-          .canvas-bg {
-            background-image: radial-gradient(rgba(15, 23, 42, 0.04) 1.5px, transparent 1.5px);
-          }
-          .connection-line {
-              filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.2));
-          }
+          .animate-slide-down { animation: slideDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+          .canvas-bg { background-image: radial-gradient(rgba(15, 23, 42, 0.05) 1.5px, transparent 1.5px); }
+          .connection-line { filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3)); }
           .selection-active {
-              outline: 3px solid #3b82f6 !important;
-              outline-offset: 6px;
-              box-shadow: 0 0 40px rgba(59, 130, 246, 0.2) !important;
-          }
-          @keyframes glow-pulse {
-              0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
-              50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.3); }
-              100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
+              outline: 2px solid #3b82f6 !important;
+              outline-offset: 4px;
+              box-shadow: 0 0 60px rgba(59, 130, 246, 0.15) !important;
           }
           .selection-box {
-              background: rgba(59, 130, 246, 0.1);
-              border: 1.5px solid #3b82f6;
-              backdrop-filter: blur(1.5px);
-              box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05);
+              background: rgba(59, 130, 246, 0.03);
+              border: 1.5px solid rgba(59, 130, 246, 0.5);
+              backdrop-filter: blur(1px);
+              pointer-events: none;
+              z-index: 9999;
           }
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {notification && (
-        <div onClick={() => setNotification(null)} className="fixed top-12 left-1/2 -translate-x-1/2 z-[1000] min-w-[340px] max-w-lg cursor-pointer animate-slide-down">
-          <div className={`glass-panel p-4 rounded-3xl border shadow-premium flex items-center gap-4 ${notification.type === 'error' ? 'bg-rose-50/90 border-rose-100' : 'bg-white/90 border-white/60'}`}>
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-soft ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-white'}`}>
+        <div onClick={() => setNotification(null)} className="fixed top-12 left-1/2 -translate-x-1/2 z-[1000] min-w-[380px] max-w-lg cursor-pointer animate-slide-down">
+          <div className={`glass-panel p-5 rounded-[32px] border shadow-premium flex items-center gap-5 ${notification.type === 'error' ? 'bg-rose-50/95 border-rose-100' : 'bg-white/95 border-white'}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-premium ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-white'}`}>
               {notification.type === 'error' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
               )}
             </div>
             <div className="flex-1">
-              <span className="block text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">System Feedback</span>
-              <p className={`text-xs font-bold leading-tight tracking-tight ${notification.type === 'error' ? 'text-rose-600' : 'text-slate-900'}`}>{notification.message}</p>
+              <span className="block text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1.5">System Protocol</span>
+              <p className={`text-[13px] font-bold leading-tight tracking-tight ${notification.type === 'error' ? 'text-rose-600' : 'text-slate-950'}`}>{notification.message}</p>
             </div>
           </div>
         </div>
       )}
 
-      {items.length === 0 && (
-          <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-0 select-none animate-fade-in">
-              <div className="text-center">
-                  <h1 className="text-[120px] font-black text-slate-950/[0.02] tracking-tighter mb-4 leading-none">STUDIO</h1>
-                  <p className="text-[10px] font-black text-slate-300 tracking-[1.2em] uppercase ml-[1.2em]">Infinity Canvas System</p>
-              </div>
-          </div>
-      )}
-
-      <div className="flex-1 relative h-full">
+      <div className="flex-1 relative h-full bg-[#f8fafc]">
           <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ backgroundSize: `${32 * view.scale}px ${32 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
           <div ref={containerRef} className={`absolute inset-0 overflow-hidden ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
-              <div className="absolute origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+              <div className="absolute origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, willChange: 'transform' }}>
                   {showConnections && renderConnections()}
                   {items.map(item => (
                       <MemoNode 
@@ -1394,6 +1340,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         item={item} 
                         isActive={activeItemId === item.id}
                         isSelected={selectedIds.has(item.id)}
+                        isDragging={isDragging && selectedIds.has(item.id)}
                         onMouseDown={handleItemMouseDown}
                         onTouchStart={handleItemTouchStart}
                         renderContent={renderContent}
@@ -1401,7 +1348,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   ))}
               </div>
               {selectionBox && (
-                <div className="absolute selection-box rounded-xl pointer-events-none z-[1000]" 
+                <div className="absolute selection-box rounded-[4px]" 
                      style={{ 
                         left: Math.min(selectionBox.startX, selectionBox.currentX), 
                         top: Math.min(selectionBox.startY, selectionBox.currentY), 
@@ -1411,99 +1358,102 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 />
               )}
           </div>
-          <div className="absolute top-6 left-6 z-50 group"><div className="flex items-center bg-white/60 backdrop-blur-3xl rounded-full border border-slate-100 shadow-premium transition-all duration-700 ease-out p-1.5 hover:bg-white hover:shadow-premium-hover cursor-pointer"><div className={`w-3 h-3 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-rose-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-56 focus-within:w-56 transition-all duration-700 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[10px] font-mono font-bold text-slate-500 w-full pl-3 pr-2 focus:outline-none placeholder:text-slate-200" placeholder="Workspace Server URL" /></div></div></div>
-          
-          <div className="absolute bottom-6 left-6 flex gap-3 z-50">
-              <div className="glass-panel p-1 rounded-full flex gap-1 shadow-premium bg-white/80 border-white/60">
-                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.25, 0.05) }))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
-                  <span className="flex items-center justify-center w-10 text-[9px] font-black text-slate-300 uppercase tracking-widest">{Math.round(view.scale * 100)}%</span>
-                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.25, 10) }))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+
+          <div className="absolute top-10 left-10 z-50 group">
+              <div className="flex items-center bg-white/70 backdrop-blur-3xl rounded-full border border-white shadow-premium p-2 hover:bg-white transition-all">
+                  <div className={`w-3.5 h-3.5 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-rose-400'} shrink-0`} />
+                  <div className="w-0 overflow-hidden group-hover:w-64 focus-within:w-64 transition-all duration-700 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                      <input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[11px] font-mono font-bold text-slate-500 w-full pl-4 pr-3 focus:outline-none placeholder:text-slate-200" placeholder="Workspace Server Endpoint" />
+                  </div>
               </div>
-              <button className="w-10 h-10 bg-white rounded-full text-slate-400 hover:text-slate-950 hover:shadow-premium transition-all shadow-premium flex items-center justify-center border border-slate-50" onClick={selectedIds.size > 0 ? centerSelection : (items.length > 0 ? fitAllItems : resetView)} title="Focus Control (F)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+          </div>
+          
+          <div className="absolute bottom-10 left-10 flex gap-4 z-50">
+              <div className="glass-panel p-1.5 rounded-full flex gap-1.5 shadow-premium bg-white/85 border-white">
+                  <button className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-all active:scale-90" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.25, 0.05) }))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                  <span className="flex items-center justify-center w-12 text-[10px] font-black text-slate-300 uppercase tracking-widest">{Math.round(view.scale * 100)}%</span>
+                  <button className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-all active:scale-90" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.25, 10) }))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+              </div>
+              <button className="w-13 h-13 bg-white rounded-full text-slate-400 hover:text-slate-950 hover:shadow-premium transition-all shadow-premium flex items-center justify-center border border-white active:scale-90" onClick={selectedIds.size > 0 ? centerSelection : (items.length > 0 ? fitAllItems : resetView)} title="Viewport Control (F)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
           </div>
 
-          <div className="absolute bottom-6 right-6 z-50">
-            <button className={`w-12 h-12 bg-white rounded-xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-slate-100 ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology View">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                {showConnections ? (<><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>) : (<><path d="M18 5a3 3 0 1 0-3 3"/><path d="M6 12a3 3 0 1 0 3 3"/><path d="M18 19a3 3 0 1 0-3-3"/><line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.2"></line><line x1="2" y1="2" x2="22" y2="22" className="text-slate-100"></line></>)}
+          <div className="absolute bottom-10 right-10 z-50">
+            <button className={`w-14 h-14 bg-white rounded-2xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-white ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology Visibility">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" className={showConnections ? 'opacity-100' : 'opacity-20'}></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" className={showConnections ? 'opacity-100' : 'opacity-20'}></line>
               </svg>
             </button>
           </div>
 
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-4 group">
-            <button className={`w-12 h-12 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20 ${showHistoryPanel ? 'rotate-90 scale-90' : ''}`}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group">
+            <button className={`w-14 h-14 bg-slate-950 rounded-2xl shadow-premium flex items-center justify-center text-white transition-all duration-1000 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20 ${showHistoryPanel ? 'rotate-90 scale-90' : ''}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
-              <button onClick={addGeneratorNode} className="flex items-center gap-3 group/item pl-1">
-                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+            <div className="flex flex-col gap-4 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
+              <button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-1">
+                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
                 </div>
-                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Synthesis Engine</span>
+                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Synthesis Core</span>
               </button>
-              
-              <button onClick={() => setShowHistoryPanel(true)} className="flex items-center gap-3 group/item pl-1">
-                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <button onClick={() => setShowHistoryPanel(true)} className="flex items-center gap-4 group/item pl-1">
+                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Asset Archive</span>
+                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Asset Repository</span>
               </button>
-
               <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
-              <label htmlFor="fab-upload" className="flex items-center gap-3 cursor-pointer group/item pl-1">
-                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-1">
+                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 </div>
-                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Import Asset</span>
+                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Link Raw Asset</span>
               </label>
             </div>
           </div>
 
-          {/* History Side Panel Overlay for Auto-retract */}
           {showHistoryPanel && (
-            <div 
-              className="fixed inset-0 z-50 bg-transparent" 
-              onClick={() => setShowHistoryPanel(false)}
-            />
+            <div className="fixed inset-0 z-50 bg-slate-950/5 backdrop-blur-sm" onClick={() => setShowHistoryPanel(false)} />
           )}
 
-          {/* History Side Panel */}
-          <div className={`fixed left-0 top-0 bottom-0 w-80 z-[60] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${showHistoryPanel ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'}`}>
-             <div className="w-full h-full glass-panel border-r border-white/60 bg-white/75 backdrop-blur-3xl shadow-2xl flex flex-col">
-                <div className="p-8 border-b border-slate-100/50 flex items-center justify-between">
+          <div className={`fixed left-0 top-0 bottom-0 w-96 z-[60] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${showHistoryPanel ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'}`}>
+             <div className="w-full h-full glass-panel border-r border-white bg-white/80 backdrop-blur-[60px] shadow-2xl flex flex-col">
+                <div className="p-10 border-b border-slate-100/30 flex items-center justify-between bg-white/20">
                    <div className="flex flex-col">
-                      <h2 className="text-[14px] font-black text-slate-950 uppercase tracking-widest leading-none">Archive</h2>
-                      <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-2 block">Global Session Assets</span>
+                      <h2 className="text-[16px] font-black text-slate-950 uppercase tracking-[0.2em] leading-none">Repository</h2>
+                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mt-3 block">Neural Session Cache</span>
                    </div>
-                   <button onClick={() => setShowHistoryPanel(false)} className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-300 hover:bg-white hover:text-slate-950 transition-all shadow-sm"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                   <button onClick={() => setShowHistoryPanel(false)} className="w-12 h-12 flex items-center justify-center rounded-2xl text-slate-300 hover:bg-slate-50 hover:text-slate-950 transition-all active:scale-90"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8">
                    {globalHistory.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                         <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-100 mb-6"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No assets cached in current session memory</p>
+                      <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                         <div className="w-20 h-20 rounded-[32px] bg-slate-50 flex items-center justify-center text-slate-100 mb-8"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                         <p className="text-[11px] font-bold text-slate-300 uppercase tracking-[0.2em] leading-relaxed">No data footprints in current neural workspace</p>
                       </div>
                    ) : (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-5">
                          {globalHistory.map((entry, idx) => (
-                            <div key={idx} className="group/asset relative aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 cursor-pointer shadow-soft hover:shadow-premium transition-all duration-500 hover:scale-[1.02]" onClick={() => restoreAssetToCanvas(entry)}>
-                               <img src={entry.src} className="w-full h-full object-cover transition-transform duration-700 group-hover/asset:scale-110" alt="archived" />
-                               <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center p-4">
-                                  <span className="text-white text-[8px] font-black uppercase tracking-widest text-center line-clamp-3 leading-relaxed">{entry.prompt}</span>
+                            <div key={idx} className="group/asset relative aspect-square rounded-3xl overflow-hidden bg-white border border-slate-100 cursor-pointer shadow-soft hover:shadow-premium transition-all duration-700 hover:scale-[1.03]" onClick={() => restoreAssetToCanvas(entry)}>
+                               <img src={entry.src} className="w-full h-full object-cover transition-transform duration-1000 group-hover/asset:scale-125" alt="cached" />
+                               <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center p-6">
+                                  <span className="text-white text-[9px] font-black uppercase tracking-widest text-center line-clamp-4 leading-relaxed">{entry.prompt}</span>
                                </div>
                             </div>
                          ))}
                       </div>
                    )}
                 </div>
-                <div className="p-8 bg-slate-50/50 border-t border-slate-100/50">
-                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest text-center">Session Assets: {globalHistory.length}</p>
+                <div className="p-10 bg-white/40 border-t border-slate-100/30 text-center">
+                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">Index Capacity: {globalHistory.length} / 100</p>
                 </div>
              </div>
           </div>
 
           {editingImage && <ImageEditor src={editingImage.src} originalSrc={editingImage.originalSrc} onSave={handleEditorSave} onCancel={() => setEditingImage(null)} />}
-          {previewImage && <div className="fixed inset-0 z-[100] bg-white/90 backdrop-blur-3xl flex items-center justify-center p-12 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-10 right-10 text-slate-400 hover:text-slate-950 transition-colors bg-white rounded-full p-3 shadow-premium" onClick={() => setPreviewImage(null)}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-10 shadow-premium rounded-[40px] bg-white p-3" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-2xl bg-slate-50" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-slate-950/90 backdrop-blur-xl rounded-full shadow-premium text-white z-50 animate-fade-in pointer-events-none select-none border border-white/10"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Optimum Res</span><div className="w-px h-4 bg-white/10"></div><span className="text-xs font-mono font-bold tracking-wider">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
+          {previewImage && <div className="fixed inset-0 z-[100] bg-white/60 backdrop-blur-[80px] flex items-center justify-center p-16 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-12 right-12 text-slate-400 hover:text-slate-950 transition-all bg-white rounded-full p-4 shadow-premium active:scale-90" onClick={() => setPreviewImage(null)}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-12 shadow-[0_100px_200px_rgba(0,0,0,0.15)] rounded-[48px] bg-white p-4" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-[32px] bg-slate-50" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-5 px-8 py-4 bg-slate-950/95 backdrop-blur-2xl rounded-full shadow-premium text-white z-50 animate-fade-in pointer-events-none select-none border border-white/10"><span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Master Native Res</span><div className="w-px h-5 bg-white/20"></div><span className="text-sm font-mono font-black tracking-[0.1em]">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
       </div>
     </div>
   );
