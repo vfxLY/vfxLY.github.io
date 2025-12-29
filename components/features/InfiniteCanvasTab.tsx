@@ -1314,42 +1314,42 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 />
               )}
           </div>
-          <div className="absolute top-8 left-8 z-50 group"><div className="flex items-center bg-white/60 backdrop-blur-3xl rounded-full border border-slate-100 shadow-premium transition-all duration-700 ease-out p-2 hover:bg-white hover:shadow-premium-hover cursor-pointer"><div className={`w-3.5 h-3.5 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-rose-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-64 focus-within:w-64 transition-all duration-700 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[11px] font-mono font-bold text-slate-500 w-full pl-4 pr-3 focus:outline-none placeholder:text-slate-200" placeholder="Workspace Server URL" /></div></div></div>
+          <div className="absolute top-6 left-6 z-50 group"><div className="flex items-center bg-white/60 backdrop-blur-3xl rounded-full border border-slate-100 shadow-premium transition-all duration-700 ease-out p-1.5 hover:bg-white hover:shadow-premium-hover cursor-pointer"><div className={`w-3 h-3 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-rose-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-56 focus-within:w-56 transition-all duration-700 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[10px] font-mono font-bold text-slate-500 w-full pl-3 pr-2 focus:outline-none placeholder:text-slate-200" placeholder="Workspace Server URL" /></div></div></div>
           
-          <div className="absolute bottom-10 left-10 flex gap-4 z-50">
-              <div className="glass-panel p-1.5 rounded-full flex gap-1.5 shadow-premium bg-white/80">
-                  <button className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.25, 0.05) }))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
-                  <span className="flex items-center justify-center w-14 text-[10px] font-black text-slate-300 uppercase tracking-widest">{Math.round(view.scale * 100)}%</span>
-                  <button className="w-10 h-10 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.25, 10) }))}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+          <div className="absolute bottom-6 left-6 flex gap-3 z-50">
+              <div className="glass-panel p-1 rounded-full flex gap-1 shadow-premium bg-white/80 border-white/60">
+                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.max(prev.scale / 1.25, 0.05) }))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                  <span className="flex items-center justify-center w-10 text-[9px] font-black text-slate-300 uppercase tracking-widest">{Math.round(view.scale * 100)}%</span>
+                  <button className="w-8 h-8 flex items-center justify-center hover:bg-slate-50 rounded-full text-slate-400 transition-colors" onClick={() => setView(prev => ({ ...prev, scale: Math.min(prev.scale * 1.25, 10) }))}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
               </div>
-              <button className="w-12 h-12 bg-white rounded-full text-slate-400 hover:text-slate-950 hover:shadow-premium transition-all shadow-premium flex items-center justify-center" onClick={selectedIds.size > 0 ? centerSelection : (items.length > 0 ? fitAllItems : resetView)} title="Focus Control (F)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
+              <button className="w-10 h-10 bg-white rounded-full text-slate-400 hover:text-slate-950 hover:shadow-premium transition-all shadow-premium flex items-center justify-center border border-slate-50" onClick={selectedIds.size > 0 ? centerSelection : (items.length > 0 ? fitAllItems : resetView)} title="Focus Control (F)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
           </div>
 
-          <div className="absolute bottom-10 right-10 z-50">
-            <button className={`w-14 h-14 bg-white rounded-xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-slate-100 ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology View">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="absolute bottom-6 right-6 z-50">
+            <button className={`w-12 h-12 bg-white rounded-xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-slate-100 ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology View">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 {showConnections ? (<><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>) : (<><path d="M18 5a3 3 0 1 0-3 3"/><path d="M6 12a3 3 0 1 0 3 3"/><path d="M18 19a3 3 0 1 0-3-3"/><line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.2"></line><line x1="2" y1="2" x2="22" y2="22" className="text-slate-100"></line></>)}
               </svg>
             </button>
           </div>
 
-          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group">
-            <button className="w-14 h-14 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-4 group">
+            <button className="w-12 h-12 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div className="flex flex-col gap-4 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
-              <button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2">
-                <div className="w-11 h-11 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+            <div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
+              <button onClick={addGeneratorNode} className="flex items-center gap-3 group/item pl-1">
+                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
                 </div>
-                <span className="text-[9px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-3 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-10px] group-hover/item:translate-x-0 uppercase tracking-widest">Synthesis Engine</span>
+                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Synthesis Engine</span>
               </button>
               <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
-              <label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2">
-                <div className="w-11 h-11 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <label htmlFor="fab-upload" className="flex items-center gap-3 cursor-pointer group/item pl-1">
+                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 </div>
-                <span className="text-[9px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-3 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-10px] group-hover/item:translate-x-0 uppercase tracking-widest">Import Asset</span>
+                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Import Asset</span>
               </label>
             </div>
           </div>
