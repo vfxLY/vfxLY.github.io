@@ -44,6 +44,7 @@ const GeminiChat: React.FC = () => {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [hasAistudio, setHasAistudio] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,9 +52,13 @@ const GeminiChat: React.FC = () => {
 
   const COMFY_SERVER_URL = "https://17610400098.top";
 
-  // 高度逻辑优化：13px * 1.5 = 19.5px 每行。 py-3 (12px * 2) = 24px 边距。
-  // 3行: 19.5 * 3 + 24 = ~83px
-  // 8行: 19.5 * 8 + 24 = ~180px
+  useEffect(() => {
+    // 检测是否处于 AI Studio 兼容环境
+    if (window.aistudio) {
+      setHasAistudio(true);
+    }
+  }, []);
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -98,8 +103,39 @@ const GeminiChat: React.FC = () => {
     setIsSettingsOpen(false);
   };
 
+  const handleSelectApiKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+    }
+  };
+
+  const ensureApiKey = async () => {
+    // 检查 process.env.API_KEY 是否存在且不为空
+    const key = process.env.API_KEY;
+    if (key && key.trim() !== '') return true;
+
+    // 如果 Key 为空且在 AI Studio 中，则尝试打开选择对话框
+    if (window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio.openSelectKey();
+        return true; // 假设选择成功，避免竞态条件
+      }
+      return true;
+    }
+    
+    return false;
+  };
+
   const handleTranslate = async () => {
     if (!input.trim() || isTranslating) return;
+    
+    const keyReady = await ensureApiKey();
+    if (!keyReady) {
+      setMessages(prev => [...prev, { role: 'model', text: "Error: No API Key detected. Please configure your environment or select a key.", isError: true }]);
+      return;
+    }
+
     setIsTranslating(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -111,8 +147,11 @@ const GeminiChat: React.FC = () => {
         }
       });
       if (response.text) setInput(response.text.trim());
-    } catch (err) {
+    } catch (err: any) {
       console.error("Translation failed:", err);
+      if (err.message?.includes("Requested entity was not found") && window.aistudio) {
+        await window.aistudio.openSelectKey();
+      }
     } finally {
       setIsTranslating(false);
     }
@@ -145,13 +184,15 @@ const GeminiChat: React.FC = () => {
   };
 
   const callComfyUI = async (params: any, model: 'flux' | 'sdxl'): Promise<string> => {
-    setStatusText(`Routing ${model.toUpperCase()}...`);
+    setStatusText(`${model.toUpperCase()} Engine: Initializing...`);
     const url = ensureHttps(COMFY_SERVER_URL);
     const clientId = generateClientId();
     let workflow;
     if (model === 'flux') workflow = generateFluxWorkflow(params.prompt, 1024, 1024, 9, useLora);
     else workflow = generateSdxlWorkflow(params.prompt, "lowres, bad quality", 1024, 1024, 12, 3.5);
     const promptId = await queuePrompt(url, workflow, clientId);
+    
+    let progressCounter = 0;
     return new Promise((resolve, reject) => {
       const poll = setInterval(async () => {
         try {
@@ -172,6 +213,9 @@ const GeminiChat: React.FC = () => {
               clearInterval(poll);
               reject(new Error("Server error"));
             }
+          } else {
+            progressCounter = Math.min(progressCounter + 2, 98);
+            setStatusText(`${model.toUpperCase()} Engine: Synthesizing... ${progressCounter}%`);
           }
         } catch (e) {
           clearInterval(poll);
@@ -184,7 +228,7 @@ const GeminiChat: React.FC = () => {
   const callGrsaiEngine = async (params: any) => {
     if (!externalKey) throw new Error("API Key required");
     const baseUrl = externalBaseUrl.replace(/\/$/, '');
-    setStatusText(`Syncing ${selectedDrawModel.toUpperCase()}...`);
+    setStatusText(`${selectedDrawModel.toUpperCase()} Core: Routing...`);
     const response = await fetch(`${baseUrl}/v1/draw/nano-banana`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${externalKey}` },
@@ -214,6 +258,9 @@ const GeminiChat: React.FC = () => {
           if (jsonStr === '[DONE]') break;
           try {
             const data = JSON.parse(jsonStr);
+            if (data.progress !== undefined) {
+                setStatusText(`${selectedDrawModel.toUpperCase()} Core: Synthesizing... ${data.progress}%`);
+            }
             if (data.results?.[0]?.url) finalUrl = data.results[0].url;
           } catch (e) {}
         }
@@ -225,19 +272,29 @@ const GeminiChat: React.FC = () => {
   const handleSend = async () => {
     if (!input.trim() && pendingImages.length === 0) return;
     if (isTyping) return;
+
+    const keyReady = await ensureApiKey();
+    if (!keyReady) {
+      setMessages(prev => [...prev, { role: 'model', text: "Exception: Gemini API Key is missing. Access process.env.API_KEY is restricted in this execution context.", isError: true }]);
+      return;
+    }
+
     const userText = input;
     const currentImages = [...pendingImages];
     const canvasRefIds = currentImages.filter(img => img.canvasItemId).map(img => img.canvasItemId!);
     let primaryModel = selectedModelMode === 'pro' ? 'gemini-3-pro-preview' : (selectedModelMode === 'vision' ? 'gemini-2.5-flash-image' : 'gemini-3-flash-preview');
+    
     setInput('');
     setPendingImages([]);
     setMessages(prev => [...prev, { role: 'user', text: userText, images: currentImages.map(i => ({ url: i.url })) }]);
     setIsTyping(true);
-    setStatusText('Processing...');
+    setStatusText('Logic Engine: Reasoning...');
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const userParts: any[] = currentImages.map(img => ({ inlineData: { mimeType: img.type, data: img.base64 } }));
       userParts.push({ text: userText });
+      
       if (selectedModelMode === 'vision') {
         const response = await ai.models.generateContent({ model: primaryModel, contents: [{ role: 'user', parts: userParts }] });
         let imageUrl = "";
@@ -246,6 +303,7 @@ const GeminiChat: React.FC = () => {
         if (imageUrl) window.dispatchEvent(new CustomEvent('add-image-to-canvas', { detail: { src: imageUrl, prompt: userText, parentIds: canvasRefIds } }));
         return;
       }
+      
       const response = await ai.models.generateContent({
         model: primaryModel,
         contents: [{ role: 'user', parts: userParts }],
@@ -254,6 +312,7 @@ const GeminiChat: React.FC = () => {
           tools: [{ functionDeclarations: [generateImageTool, editImageTool] }]
         }
       });
+
       if (response.functionCalls && response.functionCalls.length > 0) {
         for (const fc of response.functionCalls) {
           const args = fc.args as any;
@@ -261,10 +320,21 @@ const GeminiChat: React.FC = () => {
           setMessages(prev => [...prev, { role: 'model', text: `Synthesis finalized via ${selectedDrawModel.toUpperCase()}.`, images: [{ url }], modelUsed: selectedModelMode.toUpperCase() }]);
           window.dispatchEvent(new CustomEvent('add-image-to-canvas', { detail: { src: url, prompt: args.prompt, parentIds: canvasRefIds } }));
         }
-      } else setMessages(prev => [...prev, { role: 'model', text: response.text || "Acknowledged.", modelUsed: selectedModelMode.toUpperCase() }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: response.text || "Acknowledged.", modelUsed: selectedModelMode.toUpperCase() }]);
+      }
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'model', text: `Exception: ${error.message}`, isError: true }]);
-    } finally { setIsTyping(false); setStatusText(''); }
+      console.error("Gemini API Error:", error);
+      if (error.message?.includes("Requested entity was not found") && window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setMessages(prev => [...prev, { role: 'model', text: `API Key mismatch. System dialog has been re-triggered. Please re-select a valid key and try again.`, isError: true }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: `Exception: ${error.message}`, isError: true }]);
+      }
+    } finally { 
+        setIsTyping(false); 
+        setStatusText(''); 
+    }
   };
 
   return (
@@ -280,13 +350,29 @@ const GeminiChat: React.FC = () => {
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-xl" onClick={() => setIsSettingsOpen(false)} />
           <div className="relative w-full max-w-[340px] bg-white rounded-2xl shadow-premium overflow-hidden animate-fade-in border border-slate-100 p-6">
-            <h2 className="text-[11px] font-black text-slate-950 tracking-tighter mb-5 uppercase">Configuration</h2>
-            <div className="space-y-5">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[11px] font-black text-slate-950 tracking-tighter uppercase">Configuration</h2>
+              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-300 hover:text-slate-950"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div className="space-y-6">
+              {hasAistudio && (
+                <div className="pb-4 border-b border-slate-100">
+                  <label className="block text-[8px] font-black text-slate-300 uppercase tracking-widest mb-3">Gemini API Access</label>
+                  <button 
+                    onClick={handleSelectApiKey} 
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-3.5 3.5z"/></svg>
+                    Select Gemini Key
+                  </button>
+                  <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="block mt-2 text-center text-[7px] text-slate-400 hover:text-slate-600 transition-all">Requires billing-enabled GCP project</a>
+                </div>
+              )}
               <div>
-                <label className="block text-[8px] font-black text-slate-300 uppercase tracking-widest mb-2">Auth Key</label>
+                <label className="block text-[8px] font-black text-slate-300 uppercase tracking-widest mb-2">Synthesis Hub Key</label>
                 <input type="password" value={externalKey} onChange={e => setExternalKey(e.target.value)} placeholder="sk-..." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-mono font-bold text-slate-950 focus:outline-none" />
               </div>
-              <button onClick={saveSettings} className="w-full py-3 bg-slate-950 text-white rounded-xl text-[9px] font-black tracking-widest uppercase hover:bg-black transition-all">Save Hub Params</button>
+              <button onClick={saveSettings} className="w-full py-3 bg-slate-950 text-white rounded-xl text-[9px] font-black tracking-widest uppercase hover:bg-black transition-all">Update Studio Context</button>
             </div>
           </div>
         </div>
@@ -348,7 +434,16 @@ const GeminiChat: React.FC = () => {
                 </div>
               </div>
             ))}
-            {isTyping && <div className="flex gap-1 ml-1"><div className="w-1 h-1 bg-slate-200 rounded-full animate-bounce" /><div className="w-1 h-1 bg-slate-200 rounded-full animate-bounce [animation-delay:-0.15s]" /><div className="w-1 h-1 bg-slate-200 rounded-full animate-bounce [animation-delay:-0.3s]" /></div>}
+            {isTyping && (
+              <div className="flex flex-col gap-1.5 ml-1">
+                <div className="flex gap-1">
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce" />
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                  <div className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                </div>
+                {statusText && <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">{statusText}</span>}
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 

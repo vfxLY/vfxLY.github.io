@@ -1,11 +1,15 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
+// 为外部环境运行提供基础的安全垫，防止 process 未定义导致的崩溃
+if (typeof window !== 'undefined' && !window.process) {
+  // @ts-ignore
+  window.process = { env: {} };
+}
+
 console.log("Starting Application...");
 
-// 明确定义 Props 和 State 接口
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
 }
@@ -15,7 +19,6 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// 修复 TypeScript 可能无法识别继承属性的问题
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -33,14 +36,20 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', color: 'red', fontFamily: 'sans-serif', textAlign: 'center', marginTop: '50px' }}>
-          <h1>Something went wrong.</h1>
-          <p style={{ background: '#eee', padding: '10px', borderRadius: '5px', display: 'inline-block' }}>
+        <div style={{ padding: '20px', color: '#ef4444', fontFamily: 'sans-serif', textAlign: 'center', marginTop: '50px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Studio Runtime Exception</h1>
+          <p style={{ background: '#fee2e2', padding: '15px', borderRadius: '12px', display: 'inline-block', marginTop: '10px', maxWidth: '80%' }}>
             {this.state.error?.message}
           </p>
+          <div style={{ marginTop: '20px', fontSize: '12px', color: '#94a3b8' }}>
+            Ensure your environment is correctly configured or select an API key.
+          </div>
           <br/>
-          <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 20px', cursor: 'pointer' }}>
-            Reload Page
+          <button 
+            onClick={() => window.location.reload()} 
+            style={{ marginTop: '20px', padding: '10px 24px', cursor: 'pointer', background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}
+          >
+            Reload Studio
           </button>
         </div>
       );
