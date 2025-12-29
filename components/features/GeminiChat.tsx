@@ -354,7 +354,7 @@ const GeminiChat: React.FC = () => {
         </div>
       )}
 
-      <div className={`fixed right-10 top-10 bottom-10 w-[480px] z-[100] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[550px] opacity-0'}`}>
+      <div className={`fixed right-10 top-5 bottom-5 w-[480px] z-[100] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[550px] opacity-0'}`}>
         <div className="w-full h-full glass-panel rounded-[32px] shadow-premium flex flex-col relative overflow-hidden border border-white/60 bg-white/75 backdrop-blur-3xl">
           
           <div className="p-8 border-b border-slate-100/50 flex flex-col gap-6 bg-white/40">
