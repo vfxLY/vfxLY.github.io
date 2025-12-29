@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent } from 'react';
+import React, { useState, useRef, useEffect, MouseEvent, WheelEvent, DragEvent, useCallback, TouchEvent, useMemo } from 'react';
 import Button from '../ui/Button';
 import ImageEditor from './ImageEditor';
 import { 
@@ -44,7 +44,7 @@ interface BaseItem {
   width: number;
   height: number;
   zIndex: number;
-  parentIds?: string[]; // Optimized for multi-reference orchestration
+  parentIds?: string[];
   history: HistoryEntry[]; 
   historyIndex: number; 
 }
@@ -126,6 +126,40 @@ interface ResizeState {
     startH: number;
 }
 
+// --- Memoized Node Wrapper for performance ---
+const MemoNode = React.memo(({ 
+  item, 
+  isActive, 
+  isSelected, 
+  onMouseDown, 
+  onTouchStart,
+  renderContent 
+}: { 
+  item: CanvasItem, 
+  isActive: boolean, 
+  isSelected: boolean,
+  onMouseDown: (e: MouseEvent, id: string) => void,
+  onTouchStart: (e: TouchEvent, id: string) => void,
+  renderContent: (item: CanvasItem) => React.ReactNode
+}) => {
+  return (
+    <div 
+      className={`absolute group transition-shadow duration-300 rounded-2xl will-change-[left,top,width,height] ${isSelected ? 'selection-active z-20 shadow-2xl' : isActive ? 'shadow-premium z-10' : 'shadow-soft'}`} 
+      style={{ 
+        left: item.x, 
+        top: item.y, 
+        width: item.width, 
+        height: item.height, 
+        zIndex: item.zIndex 
+      }} 
+      onMouseDown={(e) => onMouseDown(e, item.id)} 
+      onTouchStart={(e) => onTouchStart(e, item.id)}
+    >
+      {renderContent(item)}
+    </div>
+  );
+});
+
 const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setServerUrl }) => {
   const [items, setItems] = useState<CanvasItem[]>([]);
   const [undoStack, setUndoStack] = useState<CanvasItem[][]>([]);
@@ -151,7 +185,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const [copyFeedbackId, setCopyFeedbackId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const pollInterval = useRef<number | null>(null);
   const notifyTimeoutRef = useRef<number | null>(null);
 
   const showNotification = useCallback((message: string, type: 'error' | 'success' | 'info' = 'error') => {
@@ -417,7 +450,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     return () => window.removeEventListener('focus-canvas-item', handleFocusItem);
   }, [items]);
 
-  // FIX: Explicitly type finalX and finalY to avoid 'any' error and scope issues
   const handleAddImageFromAgent = useCallback((e: any) => {
     const { src, prompt, parentIds } = e.detail;
     if (!src) return;
@@ -430,7 +462,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     let finalX: number = 0;
     let finalY: number = 0;
 
-    // Calculate final positions BEFORE state update to ensure TS knows they are assigned
     if (parentIds && parentIds.length > 0) {
       const parent = items.find(i => i.id === parentIds[0]);
       if (parent) {
@@ -496,7 +527,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     };
     const handleKeyUp = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space') setIsSpacePressed(false); };
     window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
-    return () => { if (pollInterval.current) clearInterval(pollInterval.current); window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
   }, [selectedIds, items, clipboard, previewImage, editingImage, performUndo, recordHistory, resetView, centerSelection, fitAllItems]);
 
   const handleWheel = (e: WheelEvent) => {
@@ -545,7 +576,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const dy = e.clientY - dragStart.y;
       
       if (dragMode === 'item') {
-        setItems(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, x: item.x + dx / view.scale, y: item.y + dy / view.scale } : item));
+        const scale = view.scale;
+        setItems(prev => prev.map(item => selectedIds.has(item.id) ? { ...item, x: item.x + dx / scale, y: item.y + dy / scale } : item));
         setDragStart({ x: e.clientX, y: e.clientY }); 
       } 
       else if (dragMode === 'canvas') { 
@@ -603,12 +635,12 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleTouchEnd = () => { setIsDragging(false); lastPinchDistRef.current = null; };
 
-  const handleItemTouchStart = (e: TouchEvent, id: string) => {
+  const handleItemTouchStart = useCallback((e: TouchEvent, id: string) => {
       e.stopPropagation(); const newZ = topZ + 1; setTopZ(newZ);
       setItems(prev => prev.map(i => i.id === id ? { ...i, zIndex: newZ } : i));
       if (!selectedIds.has(id)) { setSelectedIds(new Set([id])); setActiveItemId(id); } else { setActiveItemId(id); }
       if (!(e.target as HTMLElement).closest('input, textarea, button')) { recordHistory(); setDragMode('item'); setIsDragging(true); setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY }); }
-  };
+  }, [topZ, selectedIds, recordHistory]);
 
   const handleDragOver = (e: DragEvent) => e.preventDefault();
 
@@ -640,21 +672,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     }
   };
 
-  const handleItemMouseDown = (e: MouseEvent, id: string) => {
+  const handleItemMouseDown = useCallback((e: MouseEvent, id: string) => {
       e.stopPropagation(); 
-      
-      // Ctrl + Left Click shortcut for adding to chat attachments
       if (e.ctrlKey && e.button === 0) {
         e.preventDefault();
         const item = items.find(i => i.id === id);
         if (item) {
-          if (item.type === 'image') {
-            handleImageClickForChat(item.src, item.id);
-            return;
-          } else if (item.type === 'generator' && item.data.resultImage) {
-            handleImageClickForChat(item.data.resultImage, item.id);
-            return;
-          }
+          if (item.type === 'image') { handleImageClickForChat(item.src, item.id); return; } 
+          else if (item.type === 'generator' && item.data.resultImage) { handleImageClickForChat(item.data.resultImage, item.id); return; }
         }
       }
 
@@ -666,7 +691,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           setSelectedIds(newSelected);
       } else { if (!selectedIds.has(id)) { setSelectedIds(new Set([id])); setActiveItemId(id); } else { setActiveItemId(id); } }
       if (!(e.target as HTMLElement).closest('input, textarea, button')) { recordHistory(); setDragMode('item'); setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY }); }
-  };
+  }, [topZ, items, selectedIds, activeItemId, handleImageClickForChat, recordHistory]);
 
   const addGeneratorNode = () => {
       recordHistory(); const id = Math.random().toString(36).substr(2, 9);
@@ -963,14 +988,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const renderPromptFloat = (prompt: string, steps?: number, cfg?: number, model?: string, nodeId?: string) => (
       <div className="absolute top-0 left-full h-full pl-6 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-all duration-500 pointer-events-none group-hover:pointer-events-auto transform translate-x-[-15px] group-hover:translate-x-0" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-          <div className="w-72 max-h-[80%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-[32px] shadow-premium border border-white/60 origin-left overflow-hidden relative">
+          <div className="w-72 max-h-[80%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-2xl shadow-premium border border-white/60 origin-left overflow-hidden relative">
               {copyFeedbackId === nodeId && <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[9px] font-black px-3 py-1.5 rounded-full animate-bounce shadow-xl z-[60] tracking-widest uppercase">Copied</div>}
               <div className="p-7 overflow-y-auto custom-scrollbar flex-1">
                   <div className="flex items-center justify-between mb-5">
                       <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Metadata</span>
                       <button onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }} className="p-2.5 hover:bg-slate-50 rounded-2xl text-slate-300 hover:text-slate-950 transition-all active:scale-90" title="Copy Prompt"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                   </div>
-                  <div className="text-xs text-slate-700 font-bold leading-relaxed whitespace-pre-wrap font-sans select-text cursor-pointer hover:text-blue-600 bg-slate-50 p-5 rounded-3xl border border-slate-100/50 transition-all group/p" onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }}> {prompt} <div className="mt-4 opacity-0 group-hover/p:opacity-100 transition-opacity text-[10px] font-black text-blue-500 uppercase tracking-widest">Tap to sync</div> </div>
+                  <div className="text-xs text-slate-700 font-bold leading-relaxed whitespace-pre-wrap font-sans select-text cursor-pointer hover:text-blue-600 bg-slate-50 p-5 rounded-xl border border-slate-100/50 transition-all group/p" onClick={(e) => { e.stopPropagation(); copyPromptToActiveNode(prompt, nodeId!); }}> {prompt} <div className="mt-4 opacity-0 group-hover/p:opacity-100 transition-opacity text-[10px] font-black text-blue-500 uppercase tracking-widest">Tap to sync</div> </div>
               </div>
               <div className="p-6 bg-slate-50/50 backdrop-blur-sm border-t border-slate-100/50 flex items-center justify-between shrink-0">
                   <div className="flex gap-5">
@@ -987,7 +1012,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
-            <div className={`w-full h-full glass-panel rounded-3xl overflow-hidden shadow-glass hover:shadow-soft transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/20' : ''}`}>
+            <div className={`w-full h-full glass-panel rounded-2xl overflow-hidden shadow-glass transition-all duration-500 relative ${item.data.isGenerating ? 'ring-2 ring-blue-500/20' : ''}`}>
                 {item.data.isGenerating && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-slate-900 rounded-full animate-spin mb-5"></div><span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">{item.data.progress}% Refining</span></div>}
                 <div className="w-full h-full p-8 flex flex-col relative bg-white/40"> <textarea className="w-full flex-1 bg-transparent font-bold text-slate-900 placeholder:text-slate-300/80 resize-none focus:outline-none text-sm leading-relaxed tracking-tight font-sans transition-all duration-200 border-b border-transparent focus:border-slate-100" placeholder="Instruct refinement..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} /> </div>
             </div>
@@ -1002,31 +1027,30 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       return (
       <div className="relative group w-full h-full select-none" onDoubleClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }}>
           {currentEntry?.prompt && renderPromptFloat(currentEntry.prompt, currentEntry.steps, currentEntry.cfg, undefined, item.id)}
-          <div className="w-full h-full rounded-[32px] shadow-glass hover:shadow-soft transition-all duration-500 bg-white overflow-hidden relative border border-slate-100/50">
-              
+          <div className="w-full h-full rounded-2xl shadow-glass transition-all duration-500 bg-white overflow-hidden relative border border-slate-100/50">
               {(item.isRegenerating || item.isUpscaling) && <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-40 flex flex-col items-center justify-center"><div className="w-8 h-8 border-2 border-slate-100 border-t-blue-500 rounded-full animate-spin mb-3"></div><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.isRegenerating ? 'Redrawing' : `Optimizing ${Math.round(item.upscaleProgress || 0)}%`}</span></div>}
               {item.history.length > 1 && (
-                  <div className="absolute top-5 left-5 flex gap-2.5 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1.5" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                  <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                     {item.history.map((hist, idx) => (
                         <div key={idx} className="relative group/thumb">
-                            <button onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }} className={`w-9 h-9 rounded-xl overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10 scale-105' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button>
-                            <button onClick={(e) => removeImageVersion(item.id, idx, e)} className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                            <button onClick={(e) => { e.stopPropagation(); switchImageVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button>
+                            <button onClick={(e) => removeImageVersion(item.id, idx, e)} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                         </div>
                     ))}
                 </div>
               )}
               <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.src} alt="artwork" className="max-w-full max-h-full object-contain pointer-events-none select-none" /></div>
               {renderEditOverlay( item.id, !!item.isEditing, item.editProgress || 0, item.editPrompt, (val) => updateImageItem(item.id, { editPrompt: val }), () => executeEdit(item.id, item.editPrompt || ''), item.editMode || 'qwen', (m) => updateImageItem(item.id, { editMode: m }) )}
-              <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2.5 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
+              <div className={`absolute bottom-5 right-5 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                  {!item.isRegenerating && !item.isUpscaling && (
-                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black tracking-tighter">4K</span></button>
-                        {item.historyIndex >= 0 && item.history[item.historyIndex].prompt !== "Uploaded image" && <button onClick={(e) => { e.stopPropagation(); regenerateImage(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Regenerate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>}
-                        <button onClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-amber-500 active:scale-95 transition-all" title="Manual Edit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></>
+                    <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[10px] font-black tracking-tighter">4K</span></button>
+                        {item.historyIndex >= 0 && item.history[item.historyIndex].prompt !== "Uploaded image" && <button onClick={(e) => { e.stopPropagation(); regenerateImage(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Regenerate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-amber-500 active:scale-95 transition-all" title="Manual Edit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button></>
                  )}
-                <a href={item.src} download={`studio-export-${item.id}.png`} className="w-10 h-10 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
+                <a href={item.src} download={`studio-export-${item.id}.png`} className="w-9 h-9 bg-slate-950 text-white rounded-xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
               </div>
           </div>
-          <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-7 h-7 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+          <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           {renderResizeHandle(item.id)}
       </div>
   );
@@ -1064,20 +1088,20 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
             {displayPrompt && renderPromptFloat(displayPrompt, displaySteps, displayCfg, displayModel, item.id)}
             {isInput && (
-                <div className={`absolute bottom-full left-0 w-full flex justify-center pb-7 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
-                    <div className="flex items-center gap-1 p-1.5 bg-white rounded-3xl shadow-premium border border-slate-100/50 flex-wrap justify-center max-w-[420px]">
-                        <button className={`px-4 py-2 text-[9px] tracking-[0.2em] font-black rounded-2xl transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
-                        <button className={`px-4 py-2 text-[9px] tracking-[0.2em] font-black rounded-2xl transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
-                        <button className={`px-4 py-2 text-[9px] tracking-[0.2em] font-black rounded-2xl transition-all ${item.data.model === 'flux' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
-                        <button className={`px-4 py-2 text-[9px] tracking-[0.2em] font-black rounded-2xl transition-all ${item.data.model === 'sdxl' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
-                        <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
-                        <div className="relative flex items-center gap-1 px-2 size-menu-container">
+                <div className={`absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
+                    <div className="flex items-center gap-1 p-1 bg-white rounded-xl shadow-premium border border-slate-100/50 flex-wrap justify-center max-w-[420px]">
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'flux' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'sdxl' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
+                        <div className="w-[1px] h-4 bg-slate-100 mx-1"></div>
+                        <div className="relative flex items-center gap-1 px-1 size-menu-container">
                             <button className="text-[9px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-1 uppercase tracking-widest" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
                             {activeSizeMenuId === item.id && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-white rounded-[32px] shadow-premium border border-slate-100 p-3 z-[60] min-w-[200px] animate-fade-in flex flex-col gap-1.5 origin-bottom" onWheel={e => e.stopPropagation()}>
-                                    <div className="text-[9px] font-black text-slate-300 px-4 py-3 uppercase tracking-widest">Ratio Optimization</div>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-white rounded-xl shadow-premium border border-slate-100 p-2 z-[60] min-w-[180px] animate-fade-in flex flex-col gap-1 origin-bottom" onWheel={e => e.stopPropagation()}>
+                                    <div className="text-[8px] font-black text-slate-300 px-3 py-2 uppercase tracking-widest">Optimized Presets</div>
                                     {SIZE_PRESETS.map(preset => (
-                                        <button key={preset.label} className="text-left px-4 py-2.5 text-[11px] text-slate-700 hover:bg-slate-50 rounded-2xl hover:text-slate-950 transition-all flex justify-between items-center group/opt" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-bold">{preset.label}</span><span className="text-[9px] text-slate-300 font-mono group-hover/opt:text-slate-500">{preset.w}×{preset.h}</span></button>
+                                        <button key={preset.label} className="text-left px-3 py-2 text-[10px] text-slate-700 hover:bg-slate-50 rounded-lg hover:text-slate-950 transition-all flex justify-between items-center group/opt" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-bold">{preset.label}</span><span className="text-[8px] text-slate-300 font-mono group-hover/opt:text-slate-500">{preset.w}×{preset.h}</span></button>
                                     ))}
                                 </div>
                             )}
@@ -1085,66 +1109,73 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     </div>
                 </div>
             )}
-            <div className={`w-full h-full glass-panel rounded-[40px] overflow-hidden shadow-glass hover:shadow-soft transition-all duration-700 relative border border-slate-100/50 ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : ''}`}>
-                {(item.data.isGenerating || item.data.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-6"></div><span className="text-[10px] font-black text-slate-400 tracking-[0.2em] uppercase">{item.data.isGenerating ? `${item.data.progress}% Synthesizing` : `Optimizing ${Math.round(item.data.upscaleProgress || 0)}%`}</span></div>}
+            <div className={`w-full h-full glass-panel rounded-2xl overflow-hidden shadow-glass transition-all duration-700 relative border border-slate-100/50 ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : ''}`}>
+                {(item.data.isGenerating || item.data.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-8 h-8 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-5"></div><span className="text-[9px] font-black text-slate-400 tracking-[0.2em] uppercase">{item.data.isGenerating ? `${item.data.progress}% Synthesizing` : `Optimizing ${Math.round(item.data.upscaleProgress || 0)}%`}</span></div>}
                 {isInput ? (
-                    <div className="w-full h-full p-10 flex flex-col items-center justify-center relative bg-white/40">
+                    <div className="w-full h-full p-8 flex flex-col items-center justify-center relative bg-white/40">
                         {item.history.length > 0 && (
-                            <div className="absolute top-5 left-5 flex gap-2.5 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1.5" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.history.map((hist, idx) => (
-                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-9 h-9 rounded-xl overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10 scale-105' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button><button onClick={(e) => removeGeneratorVersion(item.id, idx, e)} className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
+                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button><button onClick={(e) => removeGeneratorVersion(item.id, idx, e)} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
                                 ))}
                             </div>
                         )}
                         
                         {(item.data.model.startsWith('nano-banana')) && (
-                          <div className="absolute bottom-5 left-5 z-40 flex flex-wrap gap-2 max-w-[160px]" onMouseDown={e => e.stopPropagation()}>
+                          <div className="absolute bottom-4 left-4 z-40 flex flex-wrap gap-1.5 max-w-[140px]" onMouseDown={e => e.stopPropagation()}>
                              {(item.data.referenceImages || []).map((ref, idx) => (
-                                <div key={idx} className="relative group/ref w-11 h-11 rounded-xl border border-white/60 shadow-soft overflow-hidden animate-fade-in hover:scale-110 transition-transform">
+                                <div key={idx} className="relative group/ref w-9 h-9 rounded-lg border border-white/60 shadow-soft overflow-hidden animate-fade-in hover:scale-110 transition-transform">
                                    <img src={ref} className="w-full h-full object-cover" />
-                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover/ref:opacity-100 transition-all"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover/ref:opacity-100 transition-all"><svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                                 </div>
                              ))}
                              {(item.data.referenceImages || []).length < 9 && (
-                                <div className="w-11 h-11 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/20 flex items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-all opacity-40 hover:opacity-100" onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()}>
+                                <div className="w-9 h-9 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/20 flex items-center justify-center cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-all opacity-40 hover:opacity-100" onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()}>
                                    <input type="file" id={`ref-upload-${item.id}`} className="hidden" accept="image/*" multiple onChange={handleRefUpload} />
-                                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-400"><path d="M12 5v14M5 12h14"/></svg>
+                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-slate-400"><path d="M12 5v14M5 12h14"/></svg>
                                 </div>
                              )}
                           </div>
                         )}
 
-                        <textarea rows={6} className={`w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Design prompt..." : "Visualize concept..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
-                        {item.data.model === 'sdxl' && <input className="w-full bg-transparent border-t border-slate-100/50 mt-5 pt-5 text-sm font-bold text-slate-500 placeholder:text-slate-200 focus:outline-none text-center font-mono" placeholder="Negative descriptors..." value={item.data.negPrompt} onChange={(e) => updateItemData(item.id, { negPrompt: e.target.value })} />}
-                        {item.data.model === 'flux' && <div className="mt-6 flex items-center gap-4 cursor-pointer group/lora bg-slate-50/50 hover:bg-slate-50 px-5 py-2.5 rounded-full border border-slate-100/50 transition-all active:scale-95" onClick={() => updateItemData(item.id, { useLora: !(item.data.useLora ?? true) })}><span className={`text-[9px] font-black uppercase tracking-[0.2em] transition-colors ${item.data.useLora !== false ? 'text-blue-600' : 'text-slate-300'}`}>Cartoon Stylize</span><div className={`w-9 h-4.5 rounded-full p-0.5 transition-colors duration-500 ${item.data.useLora !== false ? 'bg-blue-600' : 'bg-slate-200'}`}><div className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transform transition-transform duration-500 ${item.data.useLora !== false ? 'translate-x-4.5' : 'translate-x-0'}`} /></div></div>}
+                        <textarea rows={6} className={`w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Synthesis Prompt..." : "Imagine concept..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
                     </div>
                 ) : (
                     <div className="w-full h-full relative group/image bg-white overflow-hidden" onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc: item.history[0]?.src || item.data.resultImage }); }}>
                         {item.history.length > 1 && (
-                            <div className="absolute top-5 left-5 flex gap-2.5 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1.5" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 flex gap-2 z-40 max-w-[80%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.history.map((hist, idx) => (
-                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-9 h-9 rounded-xl overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-4 ring-blue-500/10 scale-105' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button><button onClick={(e) => removeGeneratorVersion(item.id, idx, e)} className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
+                                    <div key={idx} className="relative group/thumb"><button onClick={(e) => { e.stopPropagation(); switchGeneratorVersion(item.id, idx); }} className={`w-8 h-8 rounded-lg overflow-hidden border-2 shadow-sm transition-all duration-300 hover:scale-110 flex-shrink-0 ${item.historyIndex === idx ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-white/90 opacity-40 hover:opacity-100'}`}><img src={hist.src} className="w-full h-full object-cover pointer-events-none" /></button><button onClick={(e) => removeGeneratorVersion(item.id, idx, e)} className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-all shadow-lg hover:bg-rose-600 scale-75 group-hover/thumb:scale-100"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></div>
                                 ))}
                             </div>
                         )}
                         <div className="w-full h-full flex items-center justify-center bg-slate-50/50"><img src={item.data.resultImage} className="max-w-full max-h-full object-contain pointer-events-none select-none" alt="result" /></div>
                         {renderEditOverlay( item.id, !!item.data.isEditing, item.data.editProgress || 0, item.data.editPrompt, (val) => updateItemData(item.id, { editPrompt: val }), () => executeEdit(item.id, item.data.editPrompt || ''), item.data.editMode || 'qwen', (m) => updateItemData(item.id, { editMode: m }) )}
-                        <div className={`absolute bottom-6 right-6 z-40 flex flex-col gap-2.5 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
+                        <div className={`absolute bottom-5 right-5 z-40 flex flex-col gap-2 items-end transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'opacity-100' : ''}`}>
                              {!item.data.isGenerating && !item.data.isUpscaling && (
-                                <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[11px] font-black tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-10 h-10 bg-white/90 backdrop-blur-xl rounded-2xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
+                                <><button onClick={(e) => { e.stopPropagation(); executeUpscale(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-emerald-600 flex items-center justify-center hover:scale-110 active:scale-95 transition-all" title="4K Upscale"><span className="text-[10px] font-black tracking-tighter">4K</span></button><button onClick={(e) => { e.stopPropagation(); executeGeneration(item.id); }} className="w-9 h-9 bg-white/90 backdrop-blur-xl rounded-xl shadow-premium border border-white text-slate-700 flex items-center justify-center hover:scale-110 hover:text-blue-600 active:scale-95 transition-all group/refresh" title="Re-generate"><svg className="group-hover/refresh:rotate-180 transition-transform duration-700" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button></>
                              )}
-                             <button onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { mode: 'input' }); }} className="w-10 h-10 bg-white/40 backdrop-blur-md border border-white/50 text-slate-900 rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-white hover:scale-110" title="Refine Idea"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
-                            <a href={item.data.resultImage} download={`studio-export-${item.id}.png`} className="w-10 h-10 bg-slate-950 text-white rounded-2xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
+                             <button onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { mode: 'input' }); }} className="w-9 h-9 bg-white/40 backdrop-blur-md border border-white/50 text-slate-900 rounded-xl flex items-center justify-center shadow-premium transition-all hover:bg-white hover:scale-110" title="Refine Idea"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                            <a href={item.data.resultImage} download={`studio-export-${item.id}.png`} className="w-9 h-9 bg-slate-950 text-white rounded-xl flex items-center justify-center shadow-premium transition-all hover:bg-black hover:scale-110" onClick={e => e.stopPropagation()} title="Export"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
                         </div>
                     </div>
                 )}
             </div>
-            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-8 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-950 text-white px-9 py-3.5 rounded-full shadow-premium text-[11px] font-black tracking-[0.2em] hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"><span>Generate Output</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
-            <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-7 h-7 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            {isInput && !item.data.isGenerating && <div className={`absolute top-full left-0 w-full flex justify-center pt-6 opacity-0 group-hover:opacity-100 transition-all duration-500 transform -translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}><button onClick={() => executeGeneration(item.id)} className="bg-slate-950 text-white px-8 py-3 rounded-full shadow-premium text-[10px] font-black tracking-[0.1em] hover:scale-105 active:scale-95 transition-all flex items-center gap-3 uppercase"><span>Generate Output</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button></div>}
+            <button className={`absolute -top-1.5 -right-1.5 z-50 bg-white text-rose-500 w-6 h-6 flex items-center justify-center rounded-full shadow-premium border border-slate-100 transition-all duration-300 hover:scale-110 hover:bg-rose-50 opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 ${isActive ? 'opacity-100 scale-100' : ''}`} onClick={(e) => removeItem(item.id, e)} onMouseDown={e => e.stopPropagation()}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
            {renderResizeHandle(item.id)}
         </div>
       );
   };
+
+  const renderContent = useCallback((item: CanvasItem) => {
+    switch (item.type) {
+      case 'image': return renderImageNode(item as ImageItem);
+      case 'generator': return renderGeneratorNode(item as GeneratorItem);
+      case 'editor': return renderEditNode(item as EditorItem);
+      default: return null;
+    }
+  }, [items, selectedIds, activeItemId, topZ, view, serverUrl]);
 
   return (
     <div className="h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-200">
@@ -1162,12 +1193,28 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           .connection-line {
               filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.2));
           }
+          .selection-active {
+              outline: 2.5px solid #3b82f6 !important;
+              outline-offset: 4px;
+              box-shadow: 0 0 30px rgba(59, 130, 246, 0.25) !important;
+          }
+          @keyframes glow-pulse {
+              0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
+              50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.3); }
+              100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.1); }
+          }
+          .selection-box {
+              background: rgba(59, 130, 246, 0.1);
+              border: 1.5px solid #3b82f6;
+              backdrop-filter: blur(1.5px);
+              box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05);
+          }
       `}</style>
 
       {notification && (
         <div onClick={() => setNotification(null)} className="fixed top-12 left-1/2 -translate-x-1/2 z-[1000] min-w-[340px] max-w-lg cursor-pointer animate-slide-down">
-          <div className={`glass-panel p-4 rounded-[36px] border shadow-premium flex items-center gap-4 ${notification.type === 'error' ? 'bg-rose-50/90 border-rose-100' : 'bg-white/90 border-white/60'}`}>
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-soft ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-white'}`}>
+          <div className={`glass-panel p-4 rounded-3xl border shadow-premium flex items-center gap-4 ${notification.type === 'error' ? 'bg-rose-50/90 border-rose-100' : 'bg-white/90 border-white/60'}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-soft ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-white'}`}>
               {notification.type === 'error' ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               ) : (
@@ -1193,16 +1240,31 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
       <div className="flex-1 relative h-full">
           <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ backgroundSize: `${32 * view.scale}px ${32 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
-          <div ref={containerRef} className={`absolute inset-0 ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
+          <div ref={containerRef} className={`absolute inset-0 overflow-hidden ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
               <div className="absolute origin-top-left will-change-transform" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
                   {showConnections && renderConnections()}
                   {items.map(item => (
-                      <div key={item.id} className={`absolute group transition-shadow duration-500 rounded-[32px] ${selectedIds.has(item.id) ? 'selection-active z-20' : activeItemId === item.id ? 'shadow-premium z-10' : ''}`} style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: item.zIndex }} onMouseDown={(e) => handleItemMouseDown(e, item.id)} onTouchStart={(e) => handleItemTouchStart(e, item.id)}>
-                          {item.type === 'image' ? renderImageNode(item as ImageItem) : item.type === 'generator' ? renderGeneratorNode(item as GeneratorItem) : renderEditNode(item as EditorItem)}
-                      </div>
+                      <MemoNode 
+                        key={item.id} 
+                        item={item} 
+                        isActive={activeItemId === item.id}
+                        isSelected={selectedIds.has(item.id)}
+                        onMouseDown={handleItemMouseDown}
+                        onTouchStart={handleItemTouchStart}
+                        renderContent={renderContent}
+                      />
                   ))}
               </div>
-              {selectionBox && <div className="absolute border-[1.5px] border-blue-500 bg-blue-500/5 backdrop-blur-[2px] rounded-2xl pointer-events-none z-50 transition-none" style={{ left: Math.min(selectionBox.startX, selectionBox.currentX), top: Math.min(selectionBox.startY, selectionBox.currentY), width: Math.abs(selectionBox.currentX - selectionBox.startX), height: Math.abs(selectionBox.currentY - selectionBox.startY) }} />}
+              {selectionBox && (
+                <div className="absolute selection-box rounded-xl pointer-events-none z-[1000] will-change-[left,top,width,height]" 
+                     style={{ 
+                        left: Math.min(selectionBox.startX, selectionBox.currentX), 
+                        top: Math.min(selectionBox.startY, selectionBox.currentY), 
+                        width: Math.abs(selectionBox.currentX - selectionBox.startX), 
+                        height: Math.abs(selectionBox.currentY - selectionBox.startY) 
+                     }} 
+                />
+              )}
           </div>
           <div className="absolute top-8 left-8 z-50 group"><div className="flex items-center bg-white/60 backdrop-blur-3xl rounded-full border border-slate-100 shadow-premium transition-all duration-700 ease-out p-2 hover:bg-white hover:shadow-premium-hover cursor-pointer"><div className={`w-3.5 h-3.5 rounded-full shadow-inner ${serverUrl ? 'bg-emerald-400' : 'bg-rose-400'} shrink-0`} /><div className="w-0 overflow-hidden group-hover:w-64 focus-within:w-64 transition-all duration-700 ease-out opacity-0 group-hover:opacity-100 focus-within:opacity-100"><input value={serverUrl} onChange={e => setServerUrl(e.target.value)} className="bg-transparent border-none text-[11px] font-mono font-bold text-slate-500 w-full pl-4 pr-3 focus:outline-none placeholder:text-slate-200" placeholder="Workspace Server URL" /></div></div></div>
           
@@ -1216,35 +1278,35 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           </div>
 
           <div className="absolute bottom-10 right-10 z-50">
-            <button className={`w-14 h-14 bg-white rounded-2xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-slate-100 ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology View">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <button className={`w-14 h-14 bg-white rounded-xl shadow-premium flex items-center justify-center transition-all hover:scale-110 active:scale-95 border border-slate-100 ${showConnections ? 'text-blue-600' : 'text-slate-300'}`} onClick={() => setShowConnections(!showConnections)} title="Topology View">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 {showConnections ? (<><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></>) : (<><path d="M18 5a3 3 0 1 0-3 3"/><path d="M6 12a3 3 0 1 0 3 3"/><path d="M18 19a3 3 0 1 0-3-3"/><line x1="8.59" y1="13.51" x2="10" y2="14.33" opacity="0.2"></line><line x1="2" y1="2" x2="22" y2="22" className="text-slate-100"></line></>)}
               </svg>
             </button>
           </div>
 
-          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-8 group">
-            <button className="w-16 h-16 bg-slate-950 rounded-3xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group">
+            <button className="w-14 h-14 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div className="flex flex-col gap-5 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
-              <button onClick={addGeneratorNode} className="flex items-center gap-5 group/item pl-3">
-                <div className="w-12 h-12 bg-white rounded-2xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+            <div className="flex flex-col gap-4 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
+              <button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-2">
+                <div className="w-11 h-11 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
                 </div>
-                <span className="text-[10px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-4 py-2 rounded-xl shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-15px] group-hover/item:translate-x-0 uppercase tracking-widest">Synthesis Engine</span>
+                <span className="text-[9px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-3 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-10px] group-hover/item:translate-x-0 uppercase tracking-widest">Synthesis Engine</span>
               </button>
               <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
-              <label htmlFor="fab-upload" className="flex items-center gap-5 cursor-pointer group/item pl-3">
-                <div className="w-12 h-12 bg-white rounded-2xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-2">
+                <div className="w-11 h-11 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 </div>
-                <span className="text-[10px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-4 py-2 rounded-xl shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-15px] group-hover/item:translate-x-0 uppercase tracking-widest">Import Asset</span>
+                <span className="text-[9px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-3 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-10px] group-hover/item:translate-x-0 uppercase tracking-widest">Import Asset</span>
               </label>
             </div>
           </div>
           {editingImage && <ImageEditor src={editingImage.src} originalSrc={editingImage.originalSrc} onSave={handleEditorSave} onCancel={() => setEditingImage(null)} />}
-          {previewImage && <div className="fixed inset-0 z-[100] bg-white/90 backdrop-blur-3xl flex items-center justify-center p-12 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-10 right-10 text-slate-400 hover:text-slate-950 transition-colors bg-white rounded-full p-3 shadow-premium" onClick={() => setPreviewImage(null)}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-10 shadow-premium rounded-[40px] bg-white p-3" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-[32px] bg-slate-50" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-slate-950/90 backdrop-blur-xl rounded-full shadow-premium text-white z-50 animate-fade-in pointer-events-none select-none border border-white/10"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Optimum Res</span><div className="w-px h-4 bg-white/10"></div><span className="text-xs font-mono font-bold tracking-wider">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
+          {previewImage && <div className="fixed inset-0 z-[100] bg-white/90 backdrop-blur-3xl flex items-center justify-center p-12 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-10 right-10 text-slate-400 hover:text-slate-950 transition-colors bg-white rounded-full p-3 shadow-premium" onClick={() => setPreviewImage(null)}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-10 shadow-premium rounded-[40px] bg-white p-3" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-2xl bg-slate-50" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-slate-950/90 backdrop-blur-xl rounded-full shadow-premium text-white z-50 animate-fade-in pointer-events-none select-none border border-white/10"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Optimum Res</span><div className="w-px h-4 bg-white/10"></div><span className="text-xs font-mono font-bold tracking-wider">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
       </div>
     </div>
   );
