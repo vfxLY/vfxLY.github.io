@@ -7,6 +7,8 @@ declare global {
 
   interface Window {
     aistudio?: AIStudio;
+    // Fix: Explicitly add process property to Window interface for environment safety checks
+    process?: any;
   }
 
   // Augment the NodeJS namespace to ensure process.env.API_KEY is correctly typed.

@@ -1,11 +1,13 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // 为外部环境运行提供基础的安全垫，防止 process 未定义导致的崩溃
-if (typeof window !== 'undefined' && !window.process) {
+// Fix: Use type casting for window to resolve property 'process' existence error
+if (typeof window !== 'undefined' && !(window as any).process) {
   // @ts-ignore
-  window.process = { env: {} };
+  (window as any).process = { env: {} };
 }
 
 console.log("Starting Application...");
@@ -20,9 +22,12 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Explicitly declare state as a class property to ensure it is recognized by TypeScript
+  public state: ErrorBoundaryState = { hasError: false, error: null };
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    // State is now initialized as a class property above
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -34,6 +39,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
+    // Fix: Accessing state on the instance
     if (this.state.hasError) {
       return (
         <div style={{ padding: '20px', color: '#ef4444', fontFamily: 'sans-serif', textAlign: 'center', marginTop: '50px' }}>
@@ -55,6 +61,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
+    // Fix: Accessing props on the instance
     return this.props.children;
   }
 }

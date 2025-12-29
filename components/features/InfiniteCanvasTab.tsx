@@ -1186,6 +1186,19 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                     <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
                     <button className={`px-4 py-2 text-[10px] tracking-[0.1em] font-black rounded-full transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
                     
+                    {item.data.model === 'flux' && (
+                        <>
+                            <div className="w-[1px] h-4 bg-slate-100 mx-1"></div>
+                            <button 
+                                onClick={() => updateItemData(item.id, { useLora: !item.data.useLora })}
+                                className={`flex items-center gap-1.5 px-3 py-2 rounded-full transition-all ${item.data.useLora ? 'bg-blue-50 text-blue-600' : 'text-slate-300 hover:text-slate-400'}`}
+                            >
+                                <div className={`w-2 h-2 rounded-full ${item.data.useLora ? 'bg-blue-600' : 'border border-slate-200'}`} />
+                                <span className="text-[10px] font-black tracking-[0.1em] uppercase">LoRA</span>
+                            </button>
+                        </>
+                    )}
+
                     <div className="w-[1px] h-4 bg-slate-100 mx-2"></div>
                     <div className="relative flex items-center gap-1 px-1 size-menu-container">
                         <button className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-1 uppercase tracking-widest" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
