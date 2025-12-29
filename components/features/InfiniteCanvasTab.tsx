@@ -150,14 +150,14 @@ const MemoNode = React.memo(({
 }) => {
   return (
     <div 
-      className={`absolute group rounded-[40px] ${isSelected ? 'selection-active z-20' : isActive ? 'shadow-premium z-10' : 'shadow-soft'} ${isDragging ? 'cursor-grabbing select-none' : 'cursor-default'}`} 
+      className={`absolute group rounded-[48px] ${isSelected ? 'selection-active z-20' : isActive ? 'shadow-premium z-10' : 'shadow-soft'} ${isDragging ? 'cursor-grabbing select-none' : 'cursor-default'}`} 
       style={{ 
         left: item.x, 
         top: item.y, 
         width: item.width, 
         height: item.height, 
         zIndex: item.zIndex,
-        transition: isDragging ? 'none' : 'box-shadow 0.3s ease, transform 0.3s ease',
+        transition: isDragging ? 'none' : 'box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
         willChange: 'left, top, width, height, transform'
       }} 
       onMouseDown={(e) => onMouseDown(e, item.id)} 
@@ -884,7 +884,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       try {
           const src = item.type === 'image' ? (item as ImageItem).src : ((item as any).data?.resultImage || '');
           if (currentMode.startsWith('nano-banana')) {
-              const apiKey = localStorage.getItem('gemini_api_key') || ''; const baseUrl = localStorage.getItem('gemini_api_base') || 'https://api.grsai.com';
+              const apiKey = localStorage.getItem('external_api_key') || ''; 
+              const baseUrl = localStorage.getItem('external_base_url') || 'https://api.grsai.com';
               const res = await fetch(src); const blob = await res.blob(); const base64 = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result as string); reader.readAsDataURL(blob); });
               const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/draw/nano-banana`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify({ model: currentMode, prompt, aspectRatio: "auto", imageSize: "1K", urls: [base64] }) });
               if (!response.ok) { const errorData = await response.json().catch(() => ({})); cleanupState(errorData.message || errorData.msg || `网络错误 (${response.status})`); return; }
@@ -931,7 +932,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       updateItemData(itemId, { isGenerating: true, progress: 0 });
       try {
           if (item.type === 'generator' && (item.data.model === 'nano-banana-pro' || item.data.model === 'nano-banana-fast')) {
-              const apiKey = localStorage.getItem('gemini_api_key') || ''; const baseUrl = localStorage.getItem('gemini_api_base') || 'https://api.grsai.com';
+              const apiKey = localStorage.getItem('external_api_key') || ''; 
+              const baseUrl = localStorage.getItem('external_base_url') || 'https://api.grsai.com';
               const payload = { model: item.data.model, prompt: item.data.prompt, aspectRatio: "auto", imageSize: "1K", urls: item.data.referenceImages && item.data.referenceImages.length > 0 ? item.data.referenceImages : undefined };
               const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/draw/nano-banana`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify(payload) });
               if (!response.ok) { const errData = await response.json().catch(() => ({})); updateItemData(itemId, { isGenerating: false, progress: 0 }); showNotification(`生成失败：${errData.message || response.statusText}`, 'error'); return; }
@@ -1048,7 +1050,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const renderPromptFloat = (prompt: string, steps?: number, cfg?: number, model?: string, nodeId?: string) => (
       <div className="absolute top-0 left-full h-full pl-8 flex flex-col justify-start z-50 opacity-0 group-hover:opacity-100 transition-all duration-700 pointer-events-none group-hover:pointer-events-auto transform translate-x-[-20px] group-hover:translate-x-0" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-          <div className="w-80 max-h-[85%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-3xl shadow-premium border border-white origin-left overflow-hidden relative">
+          <div className="w-80 max-h-[85%] flex flex-col bg-white/95 backdrop-blur-3xl rounded-[32px] shadow-premium border border-white origin-left overflow-hidden relative">
               {copyFeedbackId === nodeId && <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-full animate-bounce shadow-2xl z-[60] tracking-[0.2em] uppercase">Copied</div>}
               <div className="p-9 overflow-y-auto custom-scrollbar flex-1">
                   <div className="flex items-center justify-between mb-6">
@@ -1072,7 +1074,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const isActive = activeItemId === item.id || selectedIds.has(item.id);
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
-            <div className={`w-full h-full glass-panel rounded-[40px] overflow-hidden shadow-glass transition-all duration-700 relative ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : ''}`}>
+            <div className={`w-full h-full glass-panel rounded-[48px] overflow-hidden shadow-glass transition-all duration-700 relative ${item.data.isGenerating ? 'ring-4 ring-blue-500/10' : ''}`}>
                 {item.data.isGenerating && <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-20 flex flex-col items-center justify-center"><div className="w-12 h-12 border-2 border-slate-100 border-t-slate-950 rounded-full animate-spin mb-6"></div><span className="text-[11px] font-black text-slate-400 tracking-[0.4em] uppercase">{item.data.progress}% Refining</span></div>}
                 <div className="w-full h-full p-10 flex flex-col relative bg-white/40"> <textarea className="w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-200 resize-none focus:outline-none text-[15px] leading-relaxed tracking-tight font-sans transition-all duration-300 border-b border-transparent focus:border-slate-100" placeholder="Instruct refinement..." value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} /> </div>
             </div>
@@ -1087,7 +1089,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       return (
       <div className="relative group w-full h-full select-none" onDoubleClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }}>
           {currentEntry?.prompt && renderPromptFloat(currentEntry.prompt, currentEntry.steps, currentEntry.cfg, undefined, item.id)}
-          <div className="w-full h-full rounded-[40px] shadow-glass transition-all duration-700 bg-white overflow-hidden relative border border-slate-100/30">
+          <div className="w-full h-full rounded-[48px] shadow-glass transition-all duration-1000 bg-white overflow-hidden relative border border-slate-100/30">
               {(item.isRegenerating || item.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-xl z-40 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-blue-500 rounded-full animate-spin mb-4"></div><span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">{item.isRegenerating ? 'Redrawing' : `Optimizing ${Math.round(item.upscaleProgress || 0)}%`}</span></div>}
               {item.history.length > 1 && (
                   <div className="absolute top-6 left-6 flex gap-3 z-40 max-w-[85%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
@@ -1175,7 +1177,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                       <div className="relative flex items-center gap-1.5 px-1 size-menu-container">
                           <button className="px-5 py-2.5 text-[11px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-2 uppercase tracking-[0.2em]" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
                           {activeSizeMenuId === item.id && (
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-white/95 backdrop-blur-3xl rounded-3xl shadow-premium border border-white p-2.5 z-[60] min-w-[220px] animate-fade-in flex flex-col gap-1.5 origin-bottom" onWheel={e => e.stopPropagation()}>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 bg-white/95 backdrop-blur-3xl rounded-[32px] shadow-premium border border-white p-2.5 z-[60] min-w-[220px] animate-fade-in flex flex-col gap-1.5 origin-bottom" onWheel={e => e.stopPropagation()}>
                                   <div className="text-[10px] font-black text-slate-300 px-4 py-3 uppercase tracking-[0.3em]">Aspect Presets</div>
                                   {SIZE_PRESETS.map(preset => (
                                       <button key={preset.label} className="text-left px-5 py-3 text-[12px] text-slate-700 hover:bg-slate-50 rounded-2xl hover:text-slate-950 transition-all flex justify-between items-center group/opt" onClick={(e) => { e.stopPropagation(); updateItemData(item.id, { width: preset.w, height: preset.h }); setActiveSizeMenuId(null); }}><span className="font-bold">{preset.label}</span><span className="text-[10px] text-slate-300 font-mono font-bold group-hover/opt:text-slate-500">{preset.w}×{preset.h}</span></button>
