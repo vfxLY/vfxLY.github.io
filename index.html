@@ -3,48 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUI Pro Studio</title>
+    <title>Studio | Infinite Orchestration</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+                        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace'],
                     },
                     colors: {
-                        glass: "rgba(255, 255, 255, 0.8)",
-                        glassBorder: "rgba(255, 255, 255, 0.5)",
-                        primary: '#0f172a',
-                        accent: '#3b82f6',
+                        glass: "rgba(255, 255, 255, 0.65)",
+                        glassBorder: "rgba(255, 255, 255, 0.45)",
+                        primary: '#0F172A',
+                        accent: '#3B82F6',
                         studio: {
                             950: '#020617',
-                            900: '#0f172a',
-                            800: '#1e293b',
+                            900: '#0F172A',
+                            800: '#1E293B',
+                            50: '#F8FAFC',
                         }
                     },
                     boxShadow: {
-                        'premium': '0 40px 100px -20px rgba(0, 0, 0, 0.08)',
-                        'premium-hover': '0 50px 120px -20px rgba(0, 0, 0, 0.12)',
-                        'glass': '0 8px 32px 0 rgba(15, 23, 42, 0.04)',
+                        'premium': '0 30px 60px -12px rgba(15, 23, 42, 0.08), 0 18px 36px -18px rgba(15, 23, 42, 0.05)',
+                        'premium-hover': '0 40px 80px -12px rgba(15, 23, 42, 0.12)',
+                        'glass': '0 8px 32px 0 rgba(15, 23, 42, 0.03)',
+                        'soft': '0 10px 40px rgba(0, 0, 0, 0.015)',
+                        'inner-premium': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
                     },
                     animation: {
                         'fade-in': 'fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'float': 'float 6s ease-in-out infinite',
+                        'float': 'float 8s ease-in-out infinite',
+                        'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'subtle-pulse': 'subtlePulse 4s ease-in-out infinite',
                     },
                     keyframes: {
                         fadeIn: {
-                            '0%': { opacity: '0', transform: 'scale(0.99) translateY(10px)' },
+                            '0%': { opacity: '0', transform: 'scale(0.99) translateY(4px)' },
                             '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(16px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
                         },
                         float: {
                             '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' },
+                            '50%': { transform: 'translateY(-12px)' },
+                        },
+                        subtlePulse: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.85' },
                         }
                     }
                 }
@@ -58,21 +71,21 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #f8fafc;
+            background-color: #F8FAFC;
         }
         
         body {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             background-image: 
-                radial-gradient(at 0% 0%, hsla(210, 40%, 99%, 1) 0, transparent 50%),
-                radial-gradient(at 100% 100%, hsla(210, 40%, 97%, 1) 0, transparent 50%);
+                radial-gradient(at 0% 0%, hsla(210, 40%, 98%, 1) 0, transparent 40%),
+                radial-gradient(at 100% 100%, hsla(215, 30%, 97%, 1) 0, transparent 40%),
+                radial-gradient(at 50% 50%, hsla(220, 100%, 100%, 1) 0, transparent 100%);
         }
 
-        /* Sophisticated Scrollbar */
         ::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
+            width: 3px;
+            height: 3px;
         }
         ::-webkit-scrollbar-track {
             background: transparent;
@@ -86,10 +99,10 @@
         }
         
         .glass-panel {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(32px) saturate(180%);
-            -webkit-backdrop-filter: blur(32px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.4);
         }
 
         #root-loading {
@@ -100,41 +113,40 @@
             align-items: center;
             justify-content: center;
             z-index: 9999;
-            background: #ffffff;
+            background: #FFFFFF;
         }
         
         .loader-logo {
-            width: 56px;
-            height: 56px;
-            border-radius: 16px;
-            background: #0f172a;
-            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.1);
-            margin-bottom: 40px;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background: #0F172A;
+            margin-bottom: 48px;
             position: relative;
         }
         
         .loader-logo::after {
             content: '';
             position: absolute;
-            inset: -4px;
+            inset: -10px;
             border-radius: 20px;
-            border: 2px solid #0f172a;
+            border: 1px solid #0F172A;
             opacity: 0.1;
-            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         .loader-bar {
-            width: 140px;
-            height: 2px;
+            width: 180px;
+            height: 1px;
             background: rgba(15, 23, 42, 0.05);
-            border-radius: 4px;
+            border-radius: 2px;
             overflow: hidden;
         }
         
         .loader-progress {
             height: 100%;
             width: 40%;
-            background: #0f172a;
+            background: #0F172A;
             animation: progress 2s ease-in-out infinite;
         }
 
@@ -144,9 +156,19 @@
         }
         
         @keyframes pulse-ring {
-            0% { transform: scale(0.9); opacity: 0.1; }
-            50% { transform: scale(1.1); opacity: 0.2; }
-            100% { transform: scale(0.9); opacity: 0.1; }
+            0% { transform: scale(0.9); opacity: 0.05; }
+            50% { transform: scale(1.15); opacity: 0.15; }
+            100% { transform: scale(0.9); opacity: 0.05; }
+        }
+
+        .canvas-grid {
+            background-image: radial-gradient(rgba(15, 23, 42, 0.03) 1.5px, transparent 1.5px);
+            background-size: 32px 32px;
+        }
+
+        .premium-blur {
+            backdrop-filter: blur(80px) saturate(210%);
+            -webkit-backdrop-filter: blur(80px) saturate(210%);
         }
     </style>
 <script type="importmap">
@@ -162,15 +184,15 @@
 }
 </script>
 </head>
-<body class="text-slate-900 antialiased selection:bg-blue-500/20">
+<body class="text-slate-900 antialiased selection:bg-blue-500/10 tracking-tight">
     <div id="root">
         <div id="root-loading">
             <div class="loader-logo"></div>
             <div class="loader-bar">
                 <div class="loader-progress"></div>
             </div>
-            <div style="margin-top: 24px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; color: #94a3b8; letter-spacing: 0.3em; font-weight: 700; text-transform: uppercase;">
-                Studio Awakening
+            <div style="margin-top: 32px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9px; color: #94A3B8; letter-spacing: 0.8em; font-weight: 800; text-transform: uppercase; text-align: center;">
+                Synchronizing Studio Ecosystem
             </div>
         </div>
     </div>
