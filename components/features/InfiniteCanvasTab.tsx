@@ -35,6 +35,7 @@ interface HistoryEntry {
   cfg?: number;
   model?: string;
   editMode?: EditMode;
+  timestamp?: number;
 }
 
 interface BaseItem {
@@ -179,6 +180,8 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const [dragMode, setDragMode] = useState<'canvas' | 'item' | 'selection'>('canvas');
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [notification, setNotification] = useState<Notification | null>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [globalHistory, setGlobalHistory] = useState<HistoryEntry[]>([]);
 
   const mousePosRef = useRef({ x: 0, y: 0 });
   const lastPinchDistRef = useRef<number | null>(null);
@@ -195,6 +198,17 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     setNotification({ message, type });
     notifyTimeoutRef.current = window.setTimeout(() => setNotification(null), 3000);
   }, []);
+
+  // Sync to global history whenever items change
+  useEffect(() => {
+    const allHistory = items.flatMap(item => item.history.map(h => ({ ...h, timestamp: h.timestamp || Date.now() })));
+    setGlobalHistory(prev => {
+      const existingUrls = new Set(prev.map(h => h.src));
+      const newEntries = allHistory.filter(h => !existingUrls.has(h.src));
+      if (newEntries.length === 0) return prev;
+      return [...newEntries, ...prev].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 100);
+    });
+  }, [items]);
 
   const recordHistory = useCallback(() => {
     setUndoStack(prev => [JSON.parse(JSON.stringify(items)), ...prev].slice(0, 50));
@@ -323,6 +337,39 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     showNotification("Added to AI Studio attachments", "info");
     window.dispatchEvent(new CustomEvent('add-image-to-chat', { detail: { src, id } }));
   }, [showNotification]);
+
+  const restoreAssetToCanvas = (entry: HistoryEntry) => {
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+    const targetW = 512;
+    const targetH = 512;
+    
+    const worldX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
+    const worldY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
+    
+    const id = Math.random().toString(36).substr(2, 9);
+    const newZ = topZ + 1;
+    
+    const newItem: ImageItem = {
+      id,
+      type: 'image',
+      x: worldX,
+      y: worldY,
+      width: targetW,
+      height: targetH,
+      zIndex: newZ,
+      src: entry.src,
+      history: [{ ...entry }],
+      historyIndex: 0
+    };
+    
+    setTopZ(newZ);
+    setItems(prev => [...prev, newItem]);
+    setActiveItemId(id);
+    setSelectedIds(new Set([id]));
+    showNotification("Asset re-deployed to canvas", "success");
+    setShowHistoryPanel(false);
+  };
 
   const pasteItems = useCallback(() => {
       if (clipboard.length === 0) return;
@@ -494,7 +541,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           zIndex: newZ,
           parentIds, 
           src,
-          history: [{ src, prompt: prompt || "AI Orchestrated Sequence" }],
+          history: [{ src, prompt: prompt || "AI Orchestrated Sequence", timestamp: Date.now() }],
           historyIndex: 0
         };
         return [...prev, newItem];
@@ -515,7 +562,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
         if (e.code === 'Space') setIsSpacePressed(true);
-        if (e.key === 'Escape') { if (previewImage) setPreviewImage(null); if (editingImage) setEditingImage(null); return; }
+        if (e.key === 'Escape') { 
+            if (showHistoryPanel) { setShowHistoryPanel(false); return; }
+            if (previewImage) setPreviewImage(null); if (editingImage) setEditingImage(null); return; 
+        }
         
         if (e.key.toLowerCase() === 'f' && !(e.target as HTMLElement).matches('input, textarea')) { 
             e.preventDefault(); 
@@ -531,7 +581,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const handleKeyUp = (e: globalThis.KeyboardEvent) => { if (e.code === 'Space') setIsSpacePressed(false); };
     window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-  }, [selectedIds, items, clipboard, previewImage, editingImage, performUndo, recordHistory, resetView, centerSelection, fitAllItems]);
+  }, [selectedIds, items, clipboard, previewImage, editingImage, showHistoryPanel, performUndo, recordHistory, resetView, centerSelection, fitAllItems]);
 
   const handleWheel = (e: WheelEvent) => {
     if ((e.target as HTMLElement).closest('textarea')) return;
@@ -667,7 +717,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         img.onload = () => {
             const maxSide = 512; let finalWidth = img.width; let finalHeight = img.height;
             if (img.width > img.height) { finalWidth = maxSide; finalHeight = (img.height / img.width) * maxSide; } else { finalHeight = maxSide; finalWidth = (img.width / img.height) * maxSide; }
-            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: worldX - (finalWidth / 2), y: worldY - (finalHeight / 2), width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image" }], historyIndex: 0 };
+            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: worldX - (finalWidth / 2), y: worldY - (finalHeight / 2), width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0 };
             setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(newItem.id); setSelectedIds(new Set([newItem.id]));
         }
       };
@@ -711,7 +761,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         img.onload = () => {
             const maxSide = 512; let finalWidth = img.width; let finalHeight = img.height;
             if (img.width > img.height) { finalWidth = maxSide; finalHeight = (img.height / img.width) * maxSide; } else { finalHeight = maxSide; finalWidth = (img.width / img.height) * maxSide; }
-            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: ((-view.x) + (window.innerWidth / 2) - (finalWidth / 2)) / view.scale, y: ((-view.y) + (window.innerHeight / 2) - (finalHeight / 2)) / view.scale, width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image" }], historyIndex: 0 };
+            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: ((-view.x) + (window.innerWidth / 2) - (finalWidth / 2)) / view.scale, y: ((-view.y) + (window.innerHeight / 2) - (finalHeight / 2)) / view.scale, width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0 };
             setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(newItem.id); setSelectedIds(new Set([newItem.id]));
         }
       };
@@ -778,7 +828,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                            for (const key in outputs) {
                               if (outputs[key].images?.length > 0) {
                                   const img = outputs[key].images[0]; const imgUrl = getImageUrl(url, img.filename, img.subfolder, img.type);
-                                  const newHistory = [...item.history, { ...currentVer, src: imgUrl }];
+                                  const newHistory = [...item.history, { ...currentVer, src: imgUrl, timestamp: Date.now() }];
                                   updateImageItem(itemId, { src: imgUrl, isRegenerating: false, history: newHistory, historyIndex: newHistory.length - 1 }); return;
                               }
                            }
@@ -814,7 +864,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                             if (outputs[key].images?.length > 0) {
                                 const img = outputs[key].images[0]; const imgUrl = getImageUrl(url, img.filename, img.subfolder, img.type);
                                 const currentPrompt = item.type === 'image' ? (item as ImageItem).history[(item as ImageItem).historyIndex]?.prompt : ((item as any).history?.[(item as any).historyIndex]?.prompt);
-                                const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: 1024, height: 1024, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt: `Upscaled: ${currentPrompt || 'Untitled'}` }], historyIndex: 0 };
+                                const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: 1024, height: 1024, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt: `Upscaled: ${currentPrompt || 'Untitled'}`, timestamp: Date.now() }], historyIndex: 0 };
                                 setTopZ(prev => prev + 2); setItems(prev => [...prev, newItem]); setSelectedIds(new Set([newItem.id])); 
                                 if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false, upscaleProgress: 100 }); else updateItemData(itemId, { isUpscaling: false, upscaleProgress: 100 }); return;
                             }
@@ -854,7 +904,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               const reader = response.body?.getReader(); const decoder = new TextDecoder(); let finalImageUrl = ""; let buffer = "";
               if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ""; for (const line of lines) { const cleanLine = line.trim(); if (!cleanLine.startsWith('data:')) continue; const jsonStr = cleanLine.replace('data:', '').trim(); if (jsonStr === '[DONE]') break; try { const data = JSON.parse(jsonStr); if (data.progress !== undefined) { if (item.type === 'image') updateImageItem(itemId, { editProgress: data.progress }); else updateItemData(itemId, { editProgress: data.progress }); } if (data.results?.[0]?.url) finalImageUrl = data.results[0].url; if (data.error || data.status === 'failed') { cleanupState(data.message || "内部错误"); return; } } catch (e) {} } } }
               if (finalImageUrl) {
-                const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: item.width, height: item.height, zIndex: topZ + 2, parentIds: [item.id], src: finalImageUrl, history: [{ src: finalImageUrl, prompt, model: currentMode, editMode: currentMode }], historyIndex: 0, editMode: currentMode };
+                const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: item.width, height: item.height, zIndex: topZ + 2, parentIds: [item.id], src: finalImageUrl, history: [{ src: finalImageUrl, prompt, model: currentMode, editMode: currentMode, timestamp: Date.now() }], historyIndex: 0, editMode: currentMode };
                 setTopZ(prev => prev + 2); setItems(prev => [...prev, newItem]); setSelectedIds(new Set([newItem.id])); 
                 if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); else updateItemData(itemId, { isEditing: false, editProgress: 100, editPrompt: '' });
               } else { cleanupState("未获得生成结果，可能触发了内容过滤"); }
@@ -872,7 +922,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                            for (const key in outputs) {
                               if (outputs[key].images?.length > 0) {
                                   const img = outputs[key].images[0]; const imgUrl = getImageUrl(url, img.filename, img.subfolder, img.type);
-                                  const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: item.width, height: item.height, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5, editMode: 'qwen' }], historyIndex: 0, editMode: 'qwen' };
+                                  const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 40, y: item.y, width: item.width, height: item.height, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt, steps: 20, cfg: 2.5, editMode: 'qwen', timestamp: Date.now() }], historyIndex: 0, editMode: 'qwen' };
                                   setTopZ(prev => prev + 2); setItems(prev => [...prev, newItem]); setSelectedIds(new Set([newItem.id])); 
                                   if (item.type === 'image') updateImageItem(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); else updateItemData(itemId, { isEditing: false, editProgress: 100, editPrompt: '' }); return;
                               }
@@ -901,7 +951,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               const reader = response.body?.getReader(); const decoder = new TextDecoder(); let finalImageUrl = ""; let buffer = "";
               if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ""; for (const line of lines) { const cleanLine = line.trim(); if (!cleanLine.startsWith('data:')) continue; const jsonStr = cleanLine.replace('data:', '').trim(); if (jsonStr === '[DONE]') break; try { const data = JSON.parse(jsonStr); if (data.progress !== undefined) updateItemData(itemId, { progress: data.progress }); if (data.results && data.results.length > 0 && data.results[0].url) { finalImageUrl = data.results[0].url; } if (data.error) { updateItemData(itemId, { isGenerating: false, progress: 0 }); showNotification(`生成取消：${data.message}`, 'error'); return; } } catch (e) {} } } }
               if (finalImageUrl) {
-                const newHistory = [...item.history, { src: finalImageUrl, prompt: item.data.prompt, model: item.data.model }];
+                const newHistory = [...item.history, { src: finalImageUrl, prompt: item.data.prompt, model: item.data.model, timestamp: Date.now() }];
                 updateItemData(itemId, { isGenerating: false, progress: 100, resultImage: finalImageUrl, mode: 'result' });
                 setItems(prev => prev.map(i => i.id === itemId ? { ...i, history: newHistory, historyIndex: newHistory.length - 1 } : i));
               } else { updateItemData(itemId, { isGenerating: false, progress: 0 }); showNotification(`生成失败：未获得图片URL`, 'error'); }
@@ -921,13 +971,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                               if (outputs[key].images?.length > 0) {
                                   const imgUrl = getImageUrl(url, outputs[key].images[0].filename, outputs[key].images[0].subfolder, outputs[key].images[0].type);
                                   if (item.type === 'generator') {
-                                      const newHistory = [...item.history, { src: imgUrl, prompt: (item as GeneratorItem).data.prompt, steps: (item as GeneratorItem).data.steps, cfg: (item as GeneratorItem).data.cfg, model: (item as GeneratorItem).data.model }];
+                                      const newHistory = [...item.history, { src: imgUrl, prompt: (item as GeneratorItem).data.prompt, steps: (item as GeneratorItem).data.steps, cfg: (item as GeneratorItem).data.cfg, model: (item as GeneratorItem).data.model, timestamp: Date.now() }];
                                       updateItemData(itemId, { isGenerating: false, progress: 100, resultImage: imgUrl, mode: 'result' });
                                       setItems(prev => prev.map(i => i.id === itemId ? { ...i, history: newHistory, historyIndex: newHistory.length - 1 } : i));
                                   } else {
                                       const imgObj = new Image(); imgObj.src = imgUrl;
                                       imgObj.onload = () => {
-                                          const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 50, y: item.y, width: imgObj.width / 2, height: imgObj.height / 2, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt: (item as EditorItem).data.prompt, steps: (item as EditorItem).data.steps, cfg: (item as EditorItem).data.cfg }], historyIndex: 0 };
+                                          const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: item.x + item.width + 50, y: item.y, width: imgObj.width / 2, height: imgObj.height / 2, zIndex: topZ + 2, parentIds: [item.id], src: imgUrl, history: [{ src: imgUrl, prompt: (item as EditorItem).data.prompt, steps: (item as EditorItem).data.steps, cfg: (item as EditorItem).data.cfg, timestamp: Date.now() }], historyIndex: 0 };
                                           setTopZ(prev => prev + 2); setItems(prev => [...prev, newItem]); setSelectedIds(new Set([newItem.id])); updateItemData(itemId, { isGenerating: false, progress: 100 });
                                       };
                                   }
@@ -951,7 +1001,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     setItems(prev => prev.map(item => {
       if (item.id === itemId) {
         const currentPrompt = item.history[item.historyIndex]?.prompt || "Manually Edited";
-        const newEntry = { src: newSrc, prompt: currentPrompt };
+        const newEntry = { src: newSrc, prompt: currentPrompt, timestamp: Date.now() };
         if (item.type === 'image') { return { ...item, src: newSrc, history: [...item.history, newEntry], historyIndex: item.history.length }; }
         if (item.type === 'generator') { return { ...item, data: { ...item.data, resultImage: newSrc }, history: [...item.history, newEntry], historyIndex: item.history.length }; }
       }
@@ -1183,7 +1233,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                           <textarea rows={6} className={`w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Synthesis Prompt..." : "Imagine concept..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
                           <button onClick={() => translateNodePrompt(item.id)} disabled={!item.data.prompt.trim() || item.data.isTranslating} className="absolute bottom-0 right-0 p-2 text-slate-300 hover:text-blue-500 transition-all opacity-0 group-hover/input:opacity-100 disabled:opacity-10">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={item.data.isTranslating ? 'animate-spin' : ''}>
-                              <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
+                              <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8(18h8.4" />
                             </svg>
                           </button>
                         </div>
@@ -1334,7 +1384,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           </div>
 
           <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-row items-center gap-4 group">
-            <button className="w-12 h-12 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20">
+            <button className={`w-12 h-12 bg-slate-950 rounded-xl shadow-premium flex items-center justify-center text-white transition-all duration-700 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20 ${showHistoryPanel ? 'rotate-90 scale-90' : ''}`}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
             <div className="flex flex-col gap-3 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-4 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
@@ -1344,6 +1394,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                 </div>
                 <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Synthesis Engine</span>
               </button>
+              
+              <button onClick={() => setShowHistoryPanel(true)} className="flex items-center gap-3 group/item pl-1">
+                <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <span className="text-[8px] font-black text-slate-500 bg-white/90 backdrop-blur-xl px-2.5 py-1.5 rounded-lg shadow-soft whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-8px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Asset Archive</span>
+              </button>
+
               <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
               <label htmlFor="fab-upload" className="flex items-center gap-3 cursor-pointer group/item pl-1">
                 <div className="w-9 h-9 bg-white rounded-lg shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-110 transition-all border border-slate-50">
@@ -1353,6 +1411,50 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               </label>
             </div>
           </div>
+
+          {/* History Side Panel Overlay for Auto-retract */}
+          {showHistoryPanel && (
+            <div 
+              className="fixed inset-0 z-50 bg-transparent" 
+              onClick={() => setShowHistoryPanel(false)}
+            />
+          )}
+
+          {/* History Side Panel */}
+          <div className={`fixed left-0 top-0 bottom-0 w-80 z-[60] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${showHistoryPanel ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'}`}>
+             <div className="w-full h-full glass-panel border-r border-white/60 bg-white/75 backdrop-blur-3xl shadow-2xl flex flex-col">
+                <div className="p-8 border-b border-slate-100/50 flex items-center justify-between">
+                   <div className="flex flex-col">
+                      <h2 className="text-[14px] font-black text-slate-950 uppercase tracking-widest leading-none">Archive</h2>
+                      <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-2 block">Global Session Assets</span>
+                   </div>
+                   <button onClick={() => setShowHistoryPanel(false)} className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-300 hover:bg-white hover:text-slate-950 transition-all shadow-sm"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                   {globalHistory.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                         <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-100 mb-6"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">No assets cached in current session memory</p>
+                      </div>
+                   ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                         {globalHistory.map((entry, idx) => (
+                            <div key={idx} className="group/asset relative aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 cursor-pointer shadow-soft hover:shadow-premium transition-all duration-500 hover:scale-[1.02]" onClick={() => restoreAssetToCanvas(entry)}>
+                               <img src={entry.src} className="w-full h-full object-cover transition-transform duration-700 group-hover/asset:scale-110" alt="archived" />
+                               <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center p-4">
+                                  <span className="text-white text-[8px] font-black uppercase tracking-widest text-center line-clamp-3 leading-relaxed">{entry.prompt}</span>
+                               </div>
+                            </div>
+                         ))}
+                      </div>
+                   )}
+                </div>
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100/50">
+                   <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest text-center">Session Assets: {globalHistory.length}</p>
+                </div>
+             </div>
+          </div>
+
           {editingImage && <ImageEditor src={editingImage.src} originalSrc={editingImage.originalSrc} onSave={handleEditorSave} onCancel={() => setEditingImage(null)} />}
           {previewImage && <div className="fixed inset-0 z-[100] bg-white/90 backdrop-blur-3xl flex items-center justify-center p-12 animate-fade-in" onClick={() => setPreviewImage(null)}><button className="absolute top-10 right-10 text-slate-400 hover:text-slate-950 transition-colors bg-white rounded-full p-3 shadow-premium" onClick={() => setPreviewImage(null)}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button><div className="relative max-w-[95vw] max-h-[95vh] flex gap-10 shadow-premium rounded-[40px] bg-white p-3" onClick={e => e.stopPropagation()}><img src={previewImage.src} className="max-w-[85vw] max-h-[90vh] object-contain rounded-2xl bg-slate-50" onLoad={(e) => { const img = e.target as HTMLImageElement; setPreviewImage(prev => prev ? { ...prev, dims: { w: img.naturalWidth, h: img.naturalHeight } } : null); }} />{previewImage.dims && <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 bg-slate-950/90 backdrop-blur-xl rounded-full shadow-premium text-white z-50 animate-fade-in pointer-events-none select-none border border-white/10"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Optimum Res</span><div className="w-px h-4 bg-white/10"></div><span className="text-xs font-mono font-bold tracking-wider">{previewImage.dims.w} <span className="text-slate-500">×</span> {previewImage.dims.h}</span></div>}</div></div>}
       </div>
