@@ -47,8 +47,21 @@ const GeminiChat: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const COMFY_SERVER_URL = "https://17610400098.top";
+
+  // 高度逻辑：14px * 1.5 = 21px 每行。 py-4 (16px * 2) = 32px 边距。
+  // 3行: 21 * 3 + 32 = 95px
+  // 8行: 21 * 8 + 32 = 200px
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      const targetHeight = Math.min(Math.max(scrollHeight, 95), 200);
+      textareaRef.current.style.height = `${targetHeight}px`;
+    }
+  }, [input]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -428,7 +441,7 @@ const GeminiChat: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="px-8 pb-8 pt-4 bg-white/50 border-t border-slate-100/30 backdrop-blur-xl">
+          <div className="px-8 pb-10 pt-4 bg-white/50 border-t border-slate-100/30 backdrop-blur-xl">
             {pendingImages.length > 0 && (
               <div className="flex gap-4 mb-6 overflow-x-auto no-scrollbar py-1 px-0.5">
                 {pendingImages.map((img, idx) => (
@@ -439,17 +452,49 @@ const GeminiChat: React.FC = () => {
                 ))}
               </div>
             )}
-            <div className="flex items-end gap-4 bg-white border border-slate-100 rounded-3xl p-4 focus-within:ring-4 focus-within:ring-slate-950/[0.03] transition-all shadow-premium border-white/90">
-              <button onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-300 hover:text-slate-950 transition-colors shrink-0 bg-slate-50 rounded-xl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-              <textarea rows={1} placeholder={selectedModelMode === 'vision' ? "Analyze visual asset..." : "Define conceptual synthesis..."} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} className="flex-1 bg-transparent border-none focus:outline-none text-[14px] font-bold text-slate-950 placeholder:text-slate-200 resize-none py-3" />
-              <button onClick={handleTranslate} disabled={!input.trim() || isTranslating} className="p-3 text-slate-400 hover:text-blue-600 transition-all active:scale-95 disabled:opacity-30 relative group/trans">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isTranslating ? 'animate-spin' : ''}>
-                  <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
-                </svg>
-                <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-xl opacity-0 group-hover/trans:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">Strict Translation</span>
-              </button>
-              <button onClick={handleSend} disabled={isTyping || (!input.trim() && pendingImages.length === 0)} className="w-12 h-12 bg-slate-950 rounded-2xl flex items-center justify-center text-white shadow-premium hover:scale-105 active:scale-95 transition-all disabled:opacity-10 disabled:scale-100 shrink-0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M5 12l7-7 7 7M12 19V5"/></svg></button>
+            
+            <div className="relative group/input-container">
+              <div className="flex items-end gap-3 bg-white/90 border border-slate-100/50 rounded-[32px] p-2 transition-all shadow-premium hover:shadow-premium-hover focus-within:ring-4 focus-within:ring-slate-950/[0.03] backdrop-blur-2xl">
+                <button 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-slate-950 transition-all hover:bg-slate-50 rounded-full shrink-0 mb-1"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                
+                <textarea 
+                  ref={textareaRef}
+                  placeholder={selectedModelMode === 'vision' ? "Analyze visual asset..." : "Define conceptual synthesis..."} 
+                  value={input} 
+                  onChange={e => setInput(e.target.value)} 
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} 
+                  className="flex-1 bg-transparent border-none focus:outline-none text-[14px] font-bold text-slate-950 placeholder:text-slate-200 resize-none py-4 overflow-y-auto custom-scrollbar transition-[height] duration-200 leading-[1.5]" 
+                  style={{ maxHeight: '200px', minHeight: '95px' }}
+                />
+                
+                <div className="flex flex-col gap-1 mb-1">
+                  <button 
+                    onClick={handleTranslate} 
+                    disabled={!input.trim() || isTranslating} 
+                    className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-all active:scale-90 disabled:opacity-10 relative group/trans"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isTranslating ? 'animate-spin' : ''}>
+                      <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
+                    </svg>
+                    <span className="absolute bottom-full right-0 mb-3 bg-slate-950 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-xl opacity-0 group-hover/trans:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">Bidirectional Translator</span>
+                  </button>
+                  
+                  <button 
+                    onClick={handleSend} 
+                    disabled={isTyping || (!input.trim() && pendingImages.length === 0)} 
+                    className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center text-white shadow-premium hover:scale-105 active:scale-95 transition-all disabled:opacity-10 disabled:scale-100 shrink-0"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="M5 12l7-7 7 7M12 19V5"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
+
             <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => {
                 const files = Array.from(e.target.files || []) as File[];
                 files.forEach(f => {
