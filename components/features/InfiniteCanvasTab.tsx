@@ -5,6 +5,7 @@ import {
   ensureHttps, queuePrompt, getHistory, getImageUrl, generateClientId, uploadImage, getLogs, parseConsoleProgress 
 } from '../../services/api';
 import { generateFluxWorkflow, generateEditWorkflow, generateSdxlWorkflow, generateUpscaleWorkflow } from '../../services/workflows';
+import { GoogleGenAI } from "@google/genai";
 
 // --- Constants ---
 const SIZE_PRESETS = [
@@ -83,6 +84,7 @@ interface GeneratorItem extends BaseItem {
     upscaleProgress?: number;
     useLora?: boolean; 
     referenceImages?: string[]; 
+    isTranslating?: boolean;
   };
 }
 
@@ -144,13 +146,14 @@ const MemoNode = React.memo(({
 }) => {
   return (
     <div 
-      className={`absolute group transition-shadow duration-300 rounded-2xl will-change-[left,top,width,height] ${isSelected ? 'selection-active z-20 shadow-2xl' : isActive ? 'shadow-premium z-10' : 'shadow-soft'}`} 
+      className={`absolute group transition-shadow duration-300 rounded-2xl ${isSelected ? 'selection-active z-20 shadow-2xl' : isActive ? 'shadow-premium z-10' : 'shadow-soft'}`} 
       style={{ 
         left: item.x, 
         top: item.y, 
         width: item.width, 
         height: item.height, 
-        zIndex: item.zIndex 
+        zIndex: item.zIndex,
+        willChange: 'left, top, width, height'
       }} 
       onMouseDown={(e) => onMouseDown(e, item.id)} 
       onTouchStart={(e) => onTouchStart(e, item.id)}
@@ -246,7 +249,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       if (items.length > 0) fitAllItems();
       else resetView();
       return;
-    };
+    }
     
     const selectedItems = items.filter(i => selectedIds.has(i.id));
     
@@ -394,7 +397,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       history: [],
       historyIndex: -1,
       data: {
-        model: 'nano-banana-pro',
+        model: 'flux',
         prompt: text,
         negPrompt: '',
         width: 1024,
@@ -696,7 +699,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const addGeneratorNode = () => {
       recordHistory(); const id = Math.random().toString(36).substr(2, 9);
       const centerX = ((-view.x) + (window.innerWidth / 2) - 220) / view.scale; const centerY = ((-view.y) + (window.innerHeight / 2) - 220) / view.scale;
-      const newItem: GeneratorItem = { id, type: 'generator', x: centerX, y: centerY, width: 440, height: 440, zIndex: topZ + 1, history: [], historyIndex: -1, data: { model: 'nano-banana-pro', prompt: '', negPrompt: '', width: 1024, height: 1024, steps: 9, cfg: 3.5, isGenerating: false, progress: 0, mode: 'input', useLora: true, referenceImages: [] } };
+      const newItem: GeneratorItem = { id, type: 'generator', x: centerX, y: centerY, width: 440, height: 440, zIndex: topZ + 1, history: [], historyIndex: -1, data: { model: 'flux', prompt: '', negPrompt: '', width: 1024, height: 1024, steps: 9, cfg: 3.5, isGenerating: false, progress: 0, mode: 'input', useLora: true, referenceImages: [] } };
       setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(id); setSelectedIds(new Set([id]));
   };
 
@@ -725,6 +728,26 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       }
       return item;
     })); 
+  };
+
+  const translateNodePrompt = async (id: string) => {
+    const item = items.find(i => i.id === id) as GeneratorItem;
+    if (!item || !item.data.prompt.trim() || item.data.isTranslating) return;
+    
+    updateItemData(id, { isTranslating: true });
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Translate the following text. If the input is in Chinese, translate it to English. If the input is in English, translate it to Chinese: ${item.data.prompt}. Return ONLY the direct translation string.`,
+        config: { systemInstruction: "Professional bidirectional translator (Chinese <-> English). Detect source language and provide the exact translation. DO NOT add stylistic changes or prompt engineering. Output ONLY the raw translation." }
+      });
+      if (response.text) updateItemData(id, { prompt: response.text.trim() });
+    } catch (err) {
+      console.error("Node translation failed:", err);
+    } finally {
+      updateItemData(id, { isTranslating: false });
+    }
   };
 
   const updateImageItem = (id: string, partialData: Partial<ImageItem>) => { setItems(prev => prev.map(item => (item.id === id && item.type === 'image') ? { ...item, ...partialData } : item)); };
@@ -1089,11 +1112,29 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             {displayPrompt && renderPromptFloat(displayPrompt, displaySteps, displayCfg, displayModel, item.id)}
             {isInput && (
                 <div className={`absolute bottom-full left-0 w-full flex justify-center pb-6 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto z-50 ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : ''}`}>
-                    <div className="flex items-center gap-1 p-1 bg-white rounded-xl shadow-premium border border-slate-100/50 flex-wrap justify-center max-w-[420px]">
-                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
-                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
+                    <div className="flex items-center gap-1 p-1 bg-white rounded-xl shadow-premium border border-slate-100/50 flex-wrap justify-center max-w-[440px]">
                         <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'flux' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'flux' })}>FLUX</button>
                         <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'sdxl' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'sdxl' })}>SDXL</button>
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-pro' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-pro' })}>NANO PRO</button>
+                        <button className={`px-3 py-1.5 text-[9px] tracking-[0.1em] font-black rounded-lg transition-all ${item.data.model === 'nano-banana-fast' ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`} onClick={() => updateItemData(item.id, { model: 'nano-banana-fast' })}>NANO FAST</button>
+                        
+                        {/* LoRA Toggle Button */}
+                        {item.data.model === 'flux' && (
+                          <>
+                            <div className="w-[1px] h-4 bg-slate-100 mx-1"></div>
+                            <button 
+                              onClick={() => updateItemData(item.id, { useLora: !item.data.useLora })}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all border ${item.data.useLora ? 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm' : 'text-slate-400 hover:bg-slate-50 border-transparent'}`}
+                              title="Toggle LoRA"
+                            >
+                              <div className={`w-3 h-3 rounded-full border-[1.5px] transition-all flex items-center justify-center ${item.data.useLora ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                {item.data.useLora && <div className="w-1 h-1 bg-white rounded-full shadow-inner animate-pulse" />}
+                              </div>
+                              <span className="text-[9px] font-black uppercase tracking-[0.15em]">LoRA</span>
+                            </button>
+                          </>
+                        )}
+
                         <div className="w-[1px] h-4 bg-slate-100 mx-1"></div>
                         <div className="relative flex items-center gap-1 px-1 size-menu-container">
                             <button className="text-[9px] font-black text-slate-400 hover:text-slate-950 transition-colors flex items-center gap-1 uppercase tracking-widest" onClick={(e) => { e.stopPropagation(); setActiveSizeMenuId(activeSizeMenuId === item.id ? null : item.id); }}>{item.data.width} × {item.data.height}</button>
@@ -1138,7 +1179,14 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                           </div>
                         )}
 
-                        <textarea rows={6} className={`w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Synthesis Prompt..." : "Imagine concept..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
+                        <div className="relative w-full flex-1 flex flex-col group/input">
+                          <textarea rows={6} className={`w-full flex-1 bg-transparent font-bold text-slate-950 placeholder:text-slate-300/80 resize-none focus:outline-none text-center leading-tight tracking-tight font-sans transition-all duration-300 break-words ${getAdaptiveFontSize(item.data.prompt)}`} placeholder={item.data.model.startsWith('nano-banana') ? "Synthesis Prompt..." : "Imagine concept..."} value={item.data.prompt} onChange={(e) => updateItemData(item.id, { prompt: e.target.value })} />
+                          <button onClick={() => translateNodePrompt(item.id)} disabled={!item.data.prompt.trim() || item.data.isTranslating} className="absolute bottom-0 right-0 p-2 text-slate-300 hover:text-blue-500 transition-all opacity-0 group-hover/input:opacity-100 disabled:opacity-10">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={item.data.isTranslating ? 'animate-spin' : ''}>
+                              <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
+                            </svg>
+                          </button>
+                        </div>
                     </div>
                 ) : (
                     <div className="w-full h-full relative group/image bg-white overflow-hidden" onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc: item.history[0]?.src || item.data.resultImage }); }}>
@@ -1175,7 +1223,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       case 'editor': return renderEditNode(item as EditorItem);
       default: return null;
     }
-  }, [items, selectedIds, activeItemId, topZ, view, serverUrl]);
+  }, [items, selectedIds, activeItemId, topZ, view, serverUrl, activeSizeMenuId]);
 
   return (
     <div className="h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-200">
@@ -1241,7 +1289,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       <div className="flex-1 relative h-full">
           <div className="absolute inset-0 pointer-events-none canvas-bg" style={{ backgroundSize: `${32 * view.scale}px ${32 * view.scale}px`, backgroundPosition: `${view.x}px ${view.y}px` }} />
           <div ref={containerRef} className={`absolute inset-0 overflow-hidden ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`} onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onDragOver={handleDragOver} onDrop={handleDrop}>
-              <div className="absolute origin-top-left will-change-transform" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+              <div className="absolute origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
                   {showConnections && renderConnections()}
                   {items.map(item => (
                       <MemoNode 
@@ -1256,7 +1304,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                   ))}
               </div>
               {selectionBox && (
-                <div className="absolute selection-box rounded-xl pointer-events-none z-[1000] will-change-[left,top,width,height]" 
+                <div className="absolute selection-box rounded-xl pointer-events-none z-[1000]" 
                      style={{ 
                         left: Math.min(selectionBox.startX, selectionBox.currentX), 
                         top: Math.min(selectionBox.startY, selectionBox.currentY), 

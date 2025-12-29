@@ -30,12 +30,14 @@ const GeminiChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedModelMode, setSelectedModelMode] = useState<ModelMode>('auto');
-  const [selectedDrawModel, setSelectedDrawModel] = useState<DrawModel>('nano-banana-pro');
+  const [selectedDrawModel, setSelectedDrawModel] = useState<DrawModel>('flux');
+  const [useLora, setUseLora] = useState(true);
   
   const [externalKey, setExternalKey] = useState<string>(localStorage.getItem('external_api_key') || '');
   const [externalBaseUrl, setExternalBaseUrl] = useState<string>(localStorage.getItem('external_base_url') || 'https://api.grsai.com');
 
   const [input, setInput] = useState('');
+  const [isTranslating, setIsTranslating] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', text: 'Hello. I am your Studio Agent. I can assist with conceptual orchestration, synthesis instructions, and visual analysis. You can adjust model modes and drawing engines in the configuration hub.' }
@@ -83,6 +85,26 @@ const GeminiChat: React.FC = () => {
     setIsSettingsOpen(false);
   };
 
+  const handleTranslate = async () => {
+    if (!input.trim() || isTranslating) return;
+    setIsTranslating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Translate the following text. If the input is in Chinese, translate it to English. If the input is in English, translate it to Chinese. Do not enhance or modify the content style: ${input}`,
+        config: { 
+          systemInstruction: "You are a professional bidirectional translator (Chinese <-> English). Detect the source language and provide a strict, direct translation. DO NOT add stylistic improvements, do not add adjectives, and do not provide any explanation or metadata. Output ONLY the translated text string." 
+        }
+      });
+      if (response.text) setInput(response.text.trim());
+    } catch (err) {
+      console.error("Translation failed:", err);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   const generateImageTool: FunctionDeclaration = {
     name: 'generate_image',
     description: 'Call this when user wants to create, draw, or synthesize a new image.',
@@ -116,7 +138,7 @@ const GeminiChat: React.FC = () => {
     let workflow;
     
     if (model === 'flux') {
-      workflow = generateFluxWorkflow(params.prompt, 1024, 1024, 9, true);
+      workflow = generateFluxWorkflow(params.prompt, 1024, 1024, 9, useLora);
     } else {
       workflow = generateSdxlWorkflow(params.prompt, "lowres, bad quality", 1024, 1024, 12, 3.5);
     }
@@ -319,10 +341,10 @@ const GeminiChat: React.FC = () => {
         </div>
       )}
 
-      <div className={`fixed right-10 top-24 bottom-32 w-[480px] z-[100] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[550px] opacity-0'}`}>
+      <div className={`fixed right-10 top-10 bottom-10 w-[480px] z-[100] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-[550px] opacity-0'}`}>
         <div className="w-full h-full glass-panel rounded-[32px] shadow-premium flex flex-col relative overflow-hidden border border-white/60 bg-white/75 backdrop-blur-3xl">
           
-          <div className="p-8 border-b border-slate-100/50 flex flex-col gap-8 bg-white/40">
+          <div className="p-8 border-b border-slate-100/50 flex flex-col gap-6 bg-white/40">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-slate-950 rounded-2xl flex items-center justify-center shadow-premium group">
@@ -343,7 +365,7 @@ const GeminiChat: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
                 <div className="flex flex-col gap-2">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] ml-1">Logic Core</span>
                     <div className="flex bg-slate-100/50 p-1 rounded-2xl gap-1 border border-slate-100 shadow-inner overflow-hidden">
@@ -354,7 +376,18 @@ const GeminiChat: React.FC = () => {
                 </div>
                 
                 <div className="flex flex-col gap-2">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] ml-1">Synthesis Core</span>
+                    <div className="flex items-center justify-between ml-1 pr-1">
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em]">Synthesis Core</span>
+                      {selectedDrawModel === 'flux' && (
+                        <button 
+                          onClick={() => setUseLora(!useLora)}
+                          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg transition-all border ${useLora ? 'bg-blue-50 text-blue-600 border-blue-100' : 'text-slate-300 hover:text-slate-400 border-transparent'}`}
+                        >
+                          <div className={`w-2 h-2 rounded-full border ${useLora ? 'bg-blue-600 border-blue-600' : 'border-slate-200'}`} />
+                          <span className="text-[8px] font-black uppercase tracking-widest">LoRA</span>
+                        </button>
+                      )}
+                    </div>
                     <div className="flex bg-slate-100/50 p-1 rounded-2xl gap-1 border border-slate-100 shadow-inner overflow-hidden">
                         {(['nano-banana-pro', 'nano-banana-fast', 'flux', 'sdxl'] as DrawModel[]).map(dm => (
                             <button key={dm} onClick={() => setSelectedDrawModel(dm)} className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all duration-500 ${selectedDrawModel === dm ? 'bg-slate-950 text-white shadow-soft' : 'text-slate-300 hover:text-slate-500'}`}> 
@@ -409,6 +442,12 @@ const GeminiChat: React.FC = () => {
             <div className="flex items-end gap-4 bg-white border border-slate-100 rounded-3xl p-4 focus-within:ring-4 focus-within:ring-slate-950/[0.03] transition-all shadow-premium border-white/90">
               <button onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-300 hover:text-slate-950 transition-colors shrink-0 bg-slate-50 rounded-xl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
               <textarea rows={1} placeholder={selectedModelMode === 'vision' ? "Analyze visual asset..." : "Define conceptual synthesis..."} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} className="flex-1 bg-transparent border-none focus:outline-none text-[14px] font-bold text-slate-950 placeholder:text-slate-200 resize-none py-3" />
+              <button onClick={handleTranslate} disabled={!input.trim() || isTranslating} className="p-3 text-slate-400 hover:text-blue-600 transition-all active:scale-95 disabled:opacity-30 relative group/trans">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={isTranslating ? 'animate-spin' : ''}>
+                  <path d="M5 8l6 6M4 14l10-10M2 5h12M7 2h1M22 22l-5-10-5 10M12.8 18h8.4" />
+                </svg>
+                <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg shadow-xl opacity-0 group-hover/trans:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">Strict Translation</span>
+              </button>
               <button onClick={handleSend} disabled={isTyping || (!input.trim() && pendingImages.length === 0)} className="w-12 h-12 bg-slate-950 rounded-2xl flex items-center justify-center text-white shadow-premium hover:scale-105 active:scale-95 transition-all disabled:opacity-10 disabled:scale-100 shrink-0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M5 12l7-7 7 7M12 19V5"/></svg></button>
             </div>
             <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => {
