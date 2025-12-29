@@ -417,67 +417,66 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     return () => window.removeEventListener('focus-canvas-item', handleFocusItem);
   }, [items]);
 
-  useEffect(() => {
-    const handleAddImageFromAgent = (e: any) => {
-      const { src, prompt, parentIds } = e.detail;
-      if (!src) return;
+  // FIX: Explicitly type finalX and finalY to avoid 'any' error and scope issues
+  const handleAddImageFromAgent = useCallback((e: any) => {
+    const { src, prompt, parentIds } = e.detail;
+    if (!src) return;
 
-      recordHistory();
-      const id = Math.random().toString(36).substr(2, 9);
-      
-      const targetW = 512;
-      const targetH = 512;
-      let finalX, finalY;
+    recordHistory();
+    const id = Math.random().toString(36).substr(2, 9);
+    
+    const targetW = 512;
+    const targetH = 512;
+    let finalX: number = 0;
+    let finalY: number = 0;
 
-      // If parentIds exist, position relative to the first parent
-      if (parentIds && parentIds.length > 0) {
-        setItems(currentItems => {
-          const parent = currentItems.find(i => i.id === parentIds[0]);
-          if (parent) {
-            finalX = parent.x + parent.width + 140;
-            finalY = parent.y;
-          } else {
-            const viewportW = window.innerWidth; const viewportH = window.innerHeight;
-            finalX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
-            finalY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
-          }
-          return currentItems;
-        });
+    // Calculate final positions BEFORE state update to ensure TS knows they are assigned
+    if (parentIds && parentIds.length > 0) {
+      const parent = items.find(i => i.id === parentIds[0]);
+      if (parent) {
+        finalX = parent.x + parent.width + 140;
+        finalY = parent.y;
       } else {
         const viewportW = window.innerWidth; const viewportH = window.innerHeight;
         finalX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
         finalY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
       }
+    } else {
+      const viewportW = window.innerWidth; const viewportH = window.innerHeight;
+      finalX = ((-view.x) + (viewportW / 2) - (targetW / 2)) / view.scale;
+      finalY = ((-view.y) + (viewportH / 2) - (targetH / 2)) / view.scale;
+    }
 
-      setTopZ(prevZ => {
-        const newZ = prevZ + 1;
-        setItems(prev => {
-          const newItem: ImageItem = {
-            id,
-            type: 'image',
-            x: finalX || 0,
-            y: finalY || 0,
-            width: targetW,
-            height: targetH,
-            zIndex: newZ,
-            parentIds, // support multi-reference linkage
-            src,
-            history: [{ src, prompt: prompt || "AI Orchestrated Sequence" }],
-            historyIndex: 0
-          };
-          return [...prev, newItem];
-        });
-        return newZ;
+    setTopZ(prevZ => {
+      const newZ = prevZ + 1;
+      setItems(prev => {
+        const newItem: ImageItem = {
+          id,
+          type: 'image',
+          x: finalX,
+          y: finalY,
+          width: targetW,
+          height: targetH,
+          zIndex: newZ,
+          parentIds, 
+          src,
+          history: [{ src, prompt: prompt || "AI Orchestrated Sequence" }],
+          historyIndex: 0
+        };
+        return [...prev, newItem];
       });
+      return newZ;
+    });
 
-      setActiveItemId(id);
-      setSelectedIds(new Set([id]));
-      showNotification("Asset synthesized with multi-point orchestration", "success");
-    };
+    setActiveItemId(id);
+    setSelectedIds(new Set([id]));
+    showNotification("Asset synthesized with multi-point orchestration", "success");
+  }, [view, recordHistory, showNotification, items]);
 
+  useEffect(() => {
     window.addEventListener('add-image-to-canvas', handleAddImageFromAgent);
     return () => window.removeEventListener('add-image-to-canvas', handleAddImageFromAgent);
-  }, [view, recordHistory, showNotification]);
+  }, [handleAddImageFromAgent]);
 
   useEffect(() => {
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
