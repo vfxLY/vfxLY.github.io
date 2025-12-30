@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,8 +19,8 @@
                         mono: ['JetBrains Mono', 'monospace'],
                     },
                     colors: {
-                        glass: "rgba(255, 255, 255, 0.65)",
-                        glassBorder: "rgba(255, 255, 255, 0.45)",
+                        glass: "rgba(255, 255, 255, 0.75)",
+                        glassBorder: "rgba(255, 255, 255, 0.5)",
                         primary: '#0F172A',
                         accent: '#3B82F6',
                         studio: {
@@ -30,34 +31,39 @@
                         }
                     },
                     boxShadow: {
-                        'premium': '0 30px 60px -12px rgba(15, 23, 42, 0.08), 0 18px 36px -18px rgba(15, 23, 42, 0.05)',
-                        'premium-hover': '0 40px 80px -12px rgba(15, 23, 42, 0.12)',
-                        'glass': '0 8px 32px 0 rgba(15, 23, 42, 0.03)',
-                        'soft': '0 10px 40px rgba(0, 0, 0, 0.015)',
-                        'inner-premium': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
+                        'premium': '0 40px 100px -12px rgba(2, 6, 23, 0.12), 0 20px 40px -20px rgba(2, 6, 23, 0.08)',
+                        'premium-hover': '0 50px 120px -12px rgba(2, 6, 23, 0.18)',
+                        'glass': '0 8px 64px 0 rgba(15, 23, 42, 0.05)',
+                        'soft': '0 10px 60px rgba(0, 0, 0, 0.02)',
+                        'inner-premium': 'inset 0 2px 8px 0 rgba(0, 0, 0, 0.03)',
                     },
                     animation: {
-                        'fade-in': 'fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'float': 'float 8s ease-in-out infinite',
-                        'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'subtle-pulse': 'subtlePulse 4s ease-in-out infinite',
+                        'fade-in': 'fadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'float': 'float 10s ease-in-out infinite',
+                        'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'subtle-pulse': 'subtlePulse 6s ease-in-out infinite',
+                        'editor-in': 'editorIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                     },
                     keyframes: {
                         fadeIn: {
-                            '0%': { opacity: '0', transform: 'scale(0.99) translateY(4px)' },
+                            '0%': { opacity: '0', transform: 'scale(0.98) translateY(10px)' },
                             '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
                         },
                         slideUp: {
-                            '0%': { opacity: '0', transform: 'translateY(16px)' },
+                            '0%': { opacity: '0', transform: 'translateY(30px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        editorIn: {
+                            '0%': { opacity: '0', transform: 'scale(1.05) translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
                         },
                         float: {
                             '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-12px)' },
+                            '50%': { transform: 'translateY(-20px)' },
                         },
                         subtlePulse: {
                             '0%, 100%': { opacity: '1' },
-                            '50%': { opacity: '0.85' },
+                            '50%': { opacity: '0.9' },
                         }
                     }
                 }
@@ -71,38 +77,34 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #F8FAFC;
+            background-color: #FFFFFF;
         }
         
         body {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             background-image: 
-                radial-gradient(at 0% 0%, hsla(210, 40%, 98%, 1) 0, transparent 40%),
-                radial-gradient(at 100% 100%, hsla(215, 30%, 97%, 1) 0, transparent 40%),
-                radial-gradient(at 50% 50%, hsla(220, 100%, 100%, 1) 0, transparent 100%);
+                radial-gradient(at 0% 0%, hsla(210, 20%, 99%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 100%, hsla(220, 15%, 98%, 1) 0, transparent 50%);
         }
 
         ::-webkit-scrollbar {
-            width: 3px;
-            height: 3px;
+            width: 4px;
+            height: 4px;
         }
         ::-webkit-scrollbar-track {
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(15, 23, 42, 0.08);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(15, 23, 42, 0.15);
+            background: rgba(15, 23, 42, 0.1);
+            border-radius: 20px;
         }
         
         .glass-panel {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(100px) saturate(200%);
+            -webkit-backdrop-filter: blur(100px) saturate(200%);
+            border: 0.5px solid rgba(255, 255, 255, 0.6);
         }
 
         #root-loading {
@@ -117,58 +119,60 @@
         }
         
         .loader-logo {
-            width: 48px;
-            height: 48px;
-            border-radius: 14px;
+            width: 64px;
+            height: 64px;
+            border-radius: 20px;
             background: #0F172A;
-            margin-bottom: 48px;
+            margin-bottom: 64px;
             position: relative;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
         }
         
         .loader-logo::after {
             content: '';
             position: absolute;
-            inset: -10px;
-            border-radius: 20px;
+            inset: -15px;
+            border-radius: 28px;
             border: 1px solid #0F172A;
-            opacity: 0.1;
-            animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            opacity: 0.05;
+            animation: pulse-ring 4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
         }
 
         .loader-bar {
-            width: 180px;
-            height: 1px;
-            background: rgba(15, 23, 42, 0.05);
-            border-radius: 2px;
+            width: 240px;
+            height: 2px;
+            background: rgba(15, 23, 42, 0.03);
+            border-radius: 4px;
             overflow: hidden;
         }
         
         .loader-progress {
             height: 100%;
-            width: 40%;
+            width: 30%;
             background: #0F172A;
-            animation: progress 2s ease-in-out infinite;
+            animation: progress 2.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
         }
 
         @keyframes progress {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(250%); }
+            0% { transform: translateX(-150%); }
+            100% { transform: translateX(350%); }
         }
         
         @keyframes pulse-ring {
-            0% { transform: scale(0.9); opacity: 0.05; }
-            50% { transform: scale(1.15); opacity: 0.15; }
-            100% { transform: scale(0.9); opacity: 0.05; }
-        }
-
-        .canvas-grid {
-            background-image: radial-gradient(rgba(15, 23, 42, 0.03) 1.5px, transparent 1.5px);
-            background-size: 32px 32px;
+            0% { transform: scale(0.9); opacity: 0.02; }
+            50% { transform: scale(1.1); opacity: 0.1; }
+            100% { transform: scale(0.9); opacity: 0.02; }
         }
 
         .premium-blur {
-            backdrop-filter: blur(80px) saturate(210%);
-            -webkit-backdrop-filter: blur(80px) saturate(210%);
+            backdrop-filter: blur(120px) saturate(250%);
+            -webkit-backdrop-filter: blur(120px) saturate(250%);
+        }
+
+        .architectural-grid {
+            background-image: linear-gradient(to right, rgba(15, 23, 42, 0.02) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(15, 23, 42, 0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
         }
     </style>
 <script type="importmap">
@@ -184,15 +188,15 @@
 }
 </script>
 </head>
-<body class="text-slate-900 antialiased selection:bg-blue-500/10 tracking-tight">
+<body class="text-slate-900 antialiased selection:bg-slate-900 selection:text-white tracking-tight">
     <div id="root">
         <div id="root-loading">
             <div class="loader-logo"></div>
             <div class="loader-bar">
                 <div class="loader-progress"></div>
             </div>
-            <div style="margin-top: 32px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 9px; color: #94A3B8; letter-spacing: 0.8em; font-weight: 800; text-transform: uppercase; text-align: center;">
-                Synchronizing Studio Ecosystem
+            <div style="margin-top: 40px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; color: #94A3B8; letter-spacing: 1.2em; font-weight: 800; text-transform: uppercase; text-align: center;">
+                Synchronizing High-End Session
             </div>
         </div>
     </div>
