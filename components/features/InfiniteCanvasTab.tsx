@@ -882,7 +882,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         checkStatus();
     } catch (e) { 
         showNotification(`放大失败：网络连接异常`, 'error');
-        if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateItemData(itemId, { isUpscaling: false }); 
+        if (item.type === 'image') updateImageItem(itemId, { isUpscaling: false }); else updateImageItem(itemId, { isUpscaling: false }); 
     }
   };
 
@@ -1210,9 +1210,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         {isNanoModel && (
                         <div className="absolute bottom-10 left-10 z-40 flex flex-wrap gap-3.5 max-w-[220px]" onMouseDown={e => e.stopPropagation()}>
                              {(item.data.referenceImages || []).map((ref, idx) => (
-                                <div key={idx} className="relative group/ref w-16 h-16 rounded-2xl border border-white shadow-premium overflow-hidden animate-fade-in hover:scale-115 transition-all">
-                                   <img src={ref} className="w-full h-full object-cover" />
-                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-xl opacity-0 group-hover/ref:opacity-100 transition-all border border-white"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                                <div key={idx} className="relative group/ref w-16 h-16 animate-fade-in">
+                                   <div className="w-full h-full rounded-2xl border border-white shadow-premium overflow-hidden hover:scale-115 transition-all duration-300">
+                                      <img src={ref} className="w-full h-full object-cover" />
+                                   </div>
+                                   <button onClick={(e) => removeRefImage(idx, e)} className="absolute -top-2.5 -right-2.5 bg-rose-500 text-white rounded-full w-5.5 h-5.5 flex items-center justify-center shadow-xl opacity-0 group-hover/ref:opacity-100 transition-all border-2 border-white z-50 hover:bg-rose-600 scale-90 hover:scale-100">
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                   </button>
                                 </div>
                              ))}
                              {(item.data.referenceImages || []).length < 9 && (
