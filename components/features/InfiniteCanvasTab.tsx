@@ -350,6 +350,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       width: targetW,
       height: targetH,
       zIndex: newZ,
+      parentIds: [],
       src: entry.src,
       history: [{ ...entry }],
       historyIndex: 0
@@ -471,22 +472,6 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     return () => window.removeEventListener('paste', handlePaste);
   }, [pasteItems, addNodeFromText]);
 
-  useEffect(() => {
-    const handleFocusItem = (e: any) => {
-      const { id } = e.detail;
-      const target = items.find(i => i.id === id);
-      if (target) {
-        const viewportW = window.innerWidth; const viewportH = window.innerHeight;
-        const scale = Math.min((viewportW * 0.7) / target.width, (viewportH * 0.7) / target.height, 1.5);
-        const itemCenterX = target.x + target.width / 2; const itemCenterY = target.y + target.height / 2;
-        setView({ x: viewportW / 2 - (itemCenterX * scale), y: viewportH / 2 - (itemCenterY * scale), scale });
-        setActiveItemId(id); setSelectedIds(new Set([id]));
-      }
-    };
-    window.addEventListener('focus-canvas-item', handleFocusItem);
-    return () => window.removeEventListener('focus-canvas-item', handleFocusItem);
-  }, [items]);
-
   const handleAddImageFromAgent = useCallback((e: any) => {
     const { src, prompt, parentIds } = e.detail;
     if (!src) return;
@@ -522,7 +507,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           width: targetW,
           height: targetH,
           zIndex: newZ,
-          parentIds, 
+          parentIds: parentIds || [], 
           src,
           history: [{ src, prompt: prompt || "AI Orchestrated Sequence", timestamp: Date.now() }],
           historyIndex: 0
@@ -706,7 +691,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         img.onload = () => {
             const maxSide = 512; let finalWidth = img.width; let finalHeight = img.height;
             if (img.width > img.height) { finalWidth = maxSide; finalHeight = (img.height / img.width) * maxSide; } else { finalHeight = maxSide; finalWidth = (img.width / img.height) * maxSide; }
-            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: worldX - (finalWidth / 2), y: worldY - (finalHeight / 2), width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0 };
+            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: worldX - (finalWidth / 2), y: worldY - (finalHeight / 2), width: finalWidth, height: finalHeight, zIndex: topZ + 1, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0, src };
             setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(newItem.id); setSelectedIds(new Set([newItem.id]));
         }
       };
@@ -754,7 +739,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
         img.onload = () => {
             const maxSide = 512; let finalWidth = img.width; let finalHeight = img.height;
             if (img.width > img.height) { finalWidth = maxSide; finalHeight = (img.height / img.width) * maxSide; } else { finalHeight = maxSide; finalWidth = (img.width / img.height) * maxSide; }
-            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: ((-view.x) + (window.innerWidth / 2) - (finalWidth / 2)) / view.scale, y: ((-view.y) + (window.innerHeight / 2) - (finalHeight / 2)) / view.scale, width: finalWidth, height: finalHeight, zIndex: topZ + 1, src, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0 };
+            const newItem: ImageItem = { id: Math.random().toString(36).substr(2, 9), type: 'image', x: ((-view.x) + (window.innerWidth / 2) - (finalWidth / 2)) / view.scale, y: ((-view.y) + (window.innerHeight / 2) - (finalHeight / 2)) / view.scale, width: finalWidth, height: finalHeight, zIndex: topZ + 1, history: [{ src, prompt: "Uploaded image", timestamp: Date.now() }], historyIndex: 0, src };
             setTopZ(prev => prev + 1); setItems(prev => [...prev, newItem]); setActiveItemId(newItem.id); setSelectedIds(new Set([newItem.id]));
         }
       };
@@ -1389,29 +1374,56 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             </button>
           </div>
 
-          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-6 group">
-            <button className={`w-14 h-14 bg-slate-950 rounded-2xl shadow-premium flex items-center justify-center text-white transition-all duration-1000 group-hover:rotate-90 hover:scale-110 active:scale-95 shrink-0 z-20 ${showHistoryPanel ? 'rotate-90 scale-90' : ''}`}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          {/* Staggered FAB Container */}
+          <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-row items-center gap-8 group py-12 pr-16 z-50">
+            <button 
+              className={`w-14 h-14 bg-slate-950 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center justify-center text-white transition-all duration-500 cubic-bezier(0.16, 1, 0.3, 1) group-hover:rotate-90 group-hover:scale-110 active:scale-90 shrink-0 z-[60] ${showHistoryPanel ? 'rotate-90 scale-90 bg-blue-600' : ''}`}
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div className="flex flex-col gap-4 items-start opacity-0 group-hover:opacity-100 transition-all duration-700 transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
-              <button onClick={addGeneratorNode} className="flex items-center gap-4 group/item pl-1">
-                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
+            
+            <div className="flex flex-col gap-5 items-start opacity-0 group-hover:opacity-100 transition-all duration-600 cubic-bezier(0.16, 1, 0.3, 1) transform -translate-x-6 group-hover:translate-x-0 pointer-events-none group-hover:pointer-events-auto">
+              <button 
+                onClick={addGeneratorNode} 
+                className="flex items-center gap-5 group/item transition-all duration-300"
+                style={{ transitionDelay: '0ms' }}
+              >
+                <div className="w-12 h-12 bg-white rounded-[18px] shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 group-hover/item:shadow-premium-hover transition-all duration-300 border border-white">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4"></path><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"></polygon></svg>
                 </div>
-                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Synthesis Core</span>
-              </button>
-              <button onClick={() => setShowHistoryPanel(true)} className="flex items-center gap-4 group/item pl-1">
-                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div className="flex flex-col bg-white/95 backdrop-blur-3xl px-6 py-3 rounded-[20px] shadow-premium border border-white/50 opacity-0 group-hover/item:opacity-100 transition-all duration-500 translate-x-[-12px] group-hover/item:translate-x-0 scale-95 group-hover/item:scale-100 origin-left">
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] leading-none mb-1">Synthesis Core</span>
+                  <span className="text-[8px] font-bold text-slate-300 uppercase tracking-[0.3em] leading-none">New Node</span>
                 </div>
-                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Asset Repository</span>
               </button>
+
+              <button 
+                onClick={() => setShowHistoryPanel(true)} 
+                className="flex items-center gap-5 group/item transition-all duration-300"
+                style={{ transitionDelay: '80ms' }}
+              >
+                <div className="w-12 h-12 bg-white rounded-[18px] shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 group-hover/item:shadow-premium-hover transition-all duration-300 border border-white">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <div className="flex flex-col bg-white/95 backdrop-blur-3xl px-6 py-3 rounded-[20px] shadow-premium border border-white/50 opacity-0 group-hover/item:opacity-100 transition-all duration-500 translate-x-[-12px] group-hover/item:translate-x-0 scale-95 group-hover/item:scale-100 origin-left">
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] leading-none mb-1">Asset Index</span>
+                  <span className="text-[8px] font-bold text-slate-300 uppercase tracking-[0.3em] leading-none">History</span>
+                </div>
+              </button>
+
               <input type="file" id="fab-upload" className="hidden" accept="image/*" onChange={handleUpload} />
-              <label htmlFor="fab-upload" className="flex items-center gap-4 cursor-pointer group/item pl-1">
-                <div className="w-11 h-11 bg-white rounded-xl shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 transition-all border border-white">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <label 
+                htmlFor="fab-upload" 
+                className="flex items-center gap-5 cursor-pointer group/item transition-all duration-300"
+                style={{ transitionDelay: '160ms' }}
+              >
+                <div className="w-12 h-12 bg-white rounded-[18px] shadow-premium flex items-center justify-center text-slate-300 group-hover/item:text-slate-950 group-hover/item:scale-115 group-hover/item:shadow-premium-hover transition-all duration-300 border border-white">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 </div>
-                <span className="text-[9px] font-black text-slate-500 bg-white/95 backdrop-blur-2xl px-4 py-2 rounded-xl shadow-premium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-all translate-x-[-12px] group-hover/item:translate-x-0 uppercase tracking-widest border border-white/50">Link Raw Asset</span>
+                <div className="flex flex-col bg-white/95 backdrop-blur-3xl px-6 py-3 rounded-[20px] shadow-premium border border-white/50 opacity-0 group-hover/item:opacity-100 transition-all duration-500 translate-x-[-12px] group-hover/item:translate-x-0 scale-95 group-hover/item:scale-100 origin-left">
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] leading-none mb-1">Import External</span>
+                  <span className="text-[8px] font-bold text-slate-300 uppercase tracking-[0.3em] leading-none">Raw Asset</span>
+                </div>
               </label>
             </div>
           </div>
