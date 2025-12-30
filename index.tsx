@@ -23,8 +23,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Fix: Explicitly declare state to resolve "Property 'state' does not exist" error
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
+  // Fix: Explicitly declare props to resolve "Property 'props' does not exist" error on line 63
+  public props: ErrorBoundaryProps;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    // Fix: Initialize the declared props property
+    this.props = props;
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
