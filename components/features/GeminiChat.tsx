@@ -26,23 +26,15 @@ interface Message {
 
 type DrawModel = 'nano-banana-pro' | 'nano-banana-fast' | 'flux' | 'sdxl';
 
-const GEMINI_MODELS = [
-  { id: 'gemini-3-pro-preview', short: '3 Pro', label: 'Gemini 3 Pro' },
-  { id: 'gemini-3-flash-preview', short: '3 Flash', label: 'Gemini 3 Flash' },
-  { id: 'gemini-2.5-flash-latest', short: '2.5 Flash', label: 'Gemini 2.5 Flash' },
-  { id: 'gemini-flash-lite-latest', short: 'Lite', label: 'Gemini 2.5 Lite' },
-];
-
 const GeminiChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [selectedDrawModel, setSelectedDrawModel] = useState<DrawModel>('flux');
   const [useLora, setUseLora] = useState(true);
   
   const [externalKey, setExternalKey] = useState<string>(localStorage.getItem('external_api_key') || '');
   const [externalBaseUrl, setExternalBaseUrl] = useState<string>(localStorage.getItem('external_base_url') || 'https://api.grsai.com');
-  const [chatModel, setChatModel] = useState<string>(localStorage.getItem('chat_model') || 'gemini-3-pro-preview');
+  const [chatModel, setChatModel] = useState<string>(localStorage.getItem('chat_model') || 'gpt-4o');
 
   const [input, setInput] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
@@ -56,7 +48,6 @@ const GeminiChat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const COMFY_SERVER_URL = "https://17610400098.top";
 
@@ -72,16 +63,6 @@ const GeminiChat: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
-        setIsModelMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   useEffect(() => {
     const handleAddImage = async (e: any) => {
@@ -125,12 +106,6 @@ const GeminiChat: React.FC = () => {
     localStorage.setItem('external_base_url', externalBaseUrl);
     localStorage.setItem('chat_model', chatModel);
     setIsSettingsOpen(false);
-  };
-
-  const selectChatModel = (modelId: string) => {
-    setChatModel(modelId);
-    localStorage.setItem('chat_model', modelId);
-    setIsModelMenuOpen(false);
   };
 
   const handleTranslate = async () => {
@@ -290,8 +265,6 @@ const GeminiChat: React.FC = () => {
     }
   };
 
-  const currentModelObj = GEMINI_MODELS.find(m => m.id === chatModel) || GEMINI_MODELS[0];
-
   return (
     <>
       {!isOpen && (
@@ -314,6 +287,10 @@ const GeminiChat: React.FC = () => {
               <div>
                 <label className="text-[9px] font-black text-slate-300 uppercase tracking-widest block mb-2 px-1">Endpoint</label>
                 <input type="text" value={externalBaseUrl} onChange={e => setExternalBaseUrl(e.target.value)} placeholder="https://api.provider.com" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-mono font-bold text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500/5 transition-all" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-300 uppercase tracking-widest block mb-2 px-1">Inference Model</label>
+                <input type="text" value={chatModel} onChange={e => setChatModel(e.target.value)} placeholder="gpt-4o" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-mono font-bold text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500/5 transition-all" />
               </div>
               <button onClick={saveSettings} className="w-full py-4.5 bg-slate-950 text-white rounded-2xl text-[10px] font-black tracking-[0.3em] uppercase shadow-premium hover:bg-black active:scale-[0.98] transition-all mt-4">Sync Config</button>
             </div>
@@ -403,38 +380,7 @@ const GeminiChat: React.FC = () => {
               </div>
             )}
             
-            <div className="flex items-end gap-3 bg-white/90 backdrop-blur-2xl border border-slate-100 p-2 rounded-[28px] shadow-premium focus-within:shadow-2xl transition-all duration-700 relative">
-              {/* Model Selector Pill */}
-              <div className="flex flex-col" ref={modelMenuRef}>
-                <button 
-                  onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                  className="w-11 h-11 flex items-center justify-center bg-slate-50 text-slate-900 rounded-2xl text-[8px] font-black uppercase tracking-tighter hover:bg-slate-100 transition-all border border-slate-100 active:scale-95 shrink-0"
-                >
-                  <div className="flex flex-col items-center leading-tight">
-                    <span>{currentModelObj.short.split(' ')[0]}</span>
-                    {currentModelObj.short.split(' ')[1] && <span className="text-blue-500">{currentModelObj.short.split(' ')[1]}</span>}
-                  </div>
-                </button>
-                
-                {isModelMenuOpen && (
-                  <div className="absolute bottom-full left-2 mb-4 w-48 bg-white/95 backdrop-blur-3xl rounded-[24px] border border-white shadow-2xl p-2 z-[200] animate-fade-in">
-                    <div className="px-4 py-3 border-b border-slate-50 mb-1">
-                      <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Select Intelligence</span>
-                    </div>
-                    {GEMINI_MODELS.map(model => (
-                      <button 
-                        key={model.id}
-                        onClick={() => selectChatModel(model.id)}
-                        className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between group ${chatModel === model.id ? 'bg-slate-950 text-white shadow-lg' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
-                      >
-                        <span className="text-[10px] font-bold">{model.label}</span>
-                        {chatModel === model.id && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
+            <div className="flex items-end gap-4 bg-white/90 backdrop-blur-2xl border border-slate-100 p-2 rounded-[28px] shadow-premium focus-within:shadow-2xl transition-all duration-700">
               <button onClick={() => fileInputRef.current?.click()} className="w-11 h-11 flex items-center justify-center text-slate-300 hover:text-slate-950 transition-all rounded-2xl hover:bg-slate-50 shrink-0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
               
               <textarea ref={textareaRef} placeholder="Instruct the agent..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} className="flex-1 bg-transparent border-none focus:outline-none text-[14px] font-bold text-slate-950 placeholder:text-slate-200 resize-none py-3 leading-snug tracking-tight no-scrollbar" style={{ maxHeight: '160px', minHeight: '44px' }} />
