@@ -22,7 +22,8 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Explicitly declare state as a class property to ensure it is recognized by TypeScript
+  // Fix: Explicitly declare props and state as class properties to ensure they are recognized by TypeScript
+  public props: ErrorBoundaryProps;
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   constructor(props: ErrorBoundaryProps) {

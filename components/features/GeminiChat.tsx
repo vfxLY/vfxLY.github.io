@@ -398,6 +398,17 @@ const GeminiChat: React.FC = () => {
                     <button key={dm} onClick={() => setSelectedDrawModel(dm)} className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase tracking-tighter transition-all ${selectedDrawModel === dm ? 'bg-slate-950 text-white shadow-soft' : 'text-slate-300 hover:text-slate-500'}`}>{dm.replace('nano-banana-', '').toUpperCase()}</button>
                   ))}
                 </div>
+                {selectedDrawModel === 'flux' && (
+                  <div className="flex justify-end px-1 -mt-1">
+                    <button 
+                      onClick={() => setUseLora(!useLora)} 
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border ${useLora ? 'bg-blue-50/50 border-blue-100 text-blue-600' : 'bg-slate-50 border-slate-100 text-slate-300'}`}
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full ${useLora ? 'bg-blue-600 animate-pulse' : 'bg-slate-200'}`} />
+                      <span className="text-[7px] font-black uppercase tracking-widest">LoRA {useLora ? 'On' : 'Off'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
