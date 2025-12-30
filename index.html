@@ -39,7 +39,7 @@
                     },
                     animation: {
                         'fade-in': 'fadeIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'float': 'float 10s ease-in-out infinite',
+                        'float': 'float 12s ease-in-out infinite',
                         'slide-up': 'slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                         'subtle-pulse': 'subtlePulse 6s ease-in-out infinite',
                         'editor-in': 'editorIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
@@ -58,8 +58,8 @@
                             '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
                         },
                         float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-20px)' },
+                            '0%, 100%': { transform: 'translateY(0) translateX(0)' },
+                            '50%': { transform: 'translateY(-40px) translateX(20px)' },
                         },
                         subtlePulse: {
                             '0%, 100%': { opacity: '1' },
@@ -83,9 +83,6 @@
         body {
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            background-image: 
-                radial-gradient(at 0% 0%, hsla(210, 20%, 99%, 1) 0, transparent 50%),
-                radial-gradient(at 100% 100%, hsla(220, 15%, 98%, 1) 0, transparent 50%);
         }
 
         ::-webkit-scrollbar {
@@ -101,10 +98,10 @@
         }
         
         .glass-panel {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(100px) saturate(200%);
-            -webkit-backdrop-filter: blur(100px) saturate(200%);
-            border: 0.5px solid rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(80px) saturate(180%);
+            -webkit-backdrop-filter: blur(80px) saturate(180%);
+            border: 0.5px solid rgba(255, 255, 255, 0.7);
         }
 
         #root-loading {
@@ -119,38 +116,38 @@
         }
         
         .loader-logo {
-            width: 64px;
-            height: 64px;
-            border-radius: 20px;
+            width: 80px;
+            height: 80px;
+            border-radius: 28px;
             background: #0F172A;
             margin-bottom: 64px;
             position: relative;
-            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+            box-shadow: 0 30px 60px rgba(15, 23, 42, 0.15);
         }
         
         .loader-logo::after {
             content: '';
             position: absolute;
-            inset: -15px;
-            border-radius: 28px;
+            inset: -20px;
+            border-radius: 40px;
             border: 1px solid #0F172A;
             opacity: 0.05;
             animation: pulse-ring 4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
         }
 
         .loader-bar {
-            width: 240px;
+            width: 200px;
             height: 2px;
-            background: rgba(15, 23, 42, 0.03);
+            background: rgba(15, 23, 42, 0.04);
             border-radius: 4px;
             overflow: hidden;
         }
         
         .loader-progress {
             height: 100%;
-            width: 30%;
+            width: 40%;
             background: #0F172A;
-            animation: progress 2.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+            animation: progress 2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
         }
 
         @keyframes progress {
@@ -159,20 +156,15 @@
         }
         
         @keyframes pulse-ring {
-            0% { transform: scale(0.9); opacity: 0.02; }
-            50% { transform: scale(1.1); opacity: 0.1; }
-            100% { transform: scale(0.9); opacity: 0.02; }
-        }
-
-        .premium-blur {
-            backdrop-filter: blur(120px) saturate(250%);
-            -webkit-backdrop-filter: blur(120px) saturate(250%);
+            0% { transform: scale(0.85); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 0.15; }
+            100% { transform: scale(0.85); opacity: 0; }
         }
 
         .architectural-grid {
-            background-image: linear-gradient(to right, rgba(15, 23, 42, 0.02) 1px, transparent 1px),
-                              linear-gradient(to bottom, rgba(15, 23, 42, 0.02) 1px, transparent 1px);
-            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(15, 23, 42, 0.015) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(15, 23, 42, 0.015) 1px, transparent 1px);
+            background-size: 60px 60px;
         }
     </style>
 <script type="importmap">
@@ -188,15 +180,15 @@
 }
 </script>
 </head>
-<body class="text-slate-900 antialiased selection:bg-slate-900 selection:text-white tracking-tight">
+<body class="text-slate-900 antialiased selection:bg-slate-950 selection:text-white tracking-tight">
     <div id="root">
         <div id="root-loading">
             <div class="loader-logo"></div>
             <div class="loader-bar">
                 <div class="loader-progress"></div>
             </div>
-            <div style="margin-top: 40px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; color: #94A3B8; letter-spacing: 1.2em; font-weight: 800; text-transform: uppercase; text-align: center;">
-                Synchronizing High-End Session
+            <div style="margin-top: 48px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 10px; color: #94A3B8; letter-spacing: 1.2em; font-weight: 800; text-transform: uppercase; text-align: center; margin-left: 1.2em;">
+                Calibrating Studio
             </div>
         </div>
     </div>
