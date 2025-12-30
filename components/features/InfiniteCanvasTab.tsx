@@ -187,6 +187,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [globalHistory, setGlobalHistory] = useState<HistoryEntry[]>([]);
   const [pickingRefForNodeId, setPickingRefForNodeId] = useState<string | null>(null);
+  const [isCanvasPicking, setIsCanvasPicking] = useState(false);
 
   const mousePosRef = useRef({ x: 0, y: 0 });
   const lastPinchDistRef = useRef<number | null>(null);
@@ -530,7 +531,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
     const handleKeyDown = (e: globalThis.KeyboardEvent) => {
         if (e.code === 'Space') setIsSpacePressed(true);
         if (e.key === 'Escape') { 
-            if (pickingRefForNodeId) { setPickingRefForNodeId(null); return; }
+            if (pickingRefForNodeId) { setPickingRefForNodeId(null); setIsCanvasPicking(false); return; }
             if (showHistoryPanel) { setShowHistoryPanel(false); return; }
             if (previewImage) setPreviewImage(null); if (editingImage) setEditingImage(null); return; 
         }
@@ -567,10 +568,25 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       if (item) { setResizeState({ id, startX: e.clientX, startY: e.clientY, startW: item.width, startH: item.height }); }
   };
 
+  const addFromCanvas = useCallback((src: string, targetId: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id === targetId && item.type === 'generator') {
+        const currentRefs = item.data.referenceImages || [];
+        if (currentRefs.length < 9 && !currentRefs.includes(src)) {
+          return { ...item, data: { ...item.data, referenceImages: [...currentRefs, src] } };
+        }
+      }
+      return item;
+    }));
+    showNotification("Asset linked from workspace", "success");
+    setPickingRefForNodeId(null);
+    setIsCanvasPicking(false);
+  }, [showNotification]);
+
   const handleMouseDown = (e: MouseEvent) => {
     if (!(e.target as HTMLElement).closest('.size-menu-container') && !(e.target as HTMLElement).closest('.picker-container')) { 
       setActiveSizeMenuId(null); 
-      setPickingRefForNodeId(null);
+      if (!isCanvasPicking) setPickingRefForNodeId(null);
     }
     if ((e.target as HTMLElement).closest('input, textarea, button, label')) return;
     const isCanvasBg = e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-bg');
@@ -701,6 +717,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
 
   const handleItemMouseDown = useCallback((e: MouseEvent, id: string) => {
       e.stopPropagation(); 
+      if (isCanvasPicking && pickingRefForNodeId) {
+        const item = items.find(i => i.id === id);
+        if (item) {
+          const src = item.type === 'image' ? (item as ImageItem).src : ((item as GeneratorItem).data.resultImage);
+          if (src) {
+            addFromCanvas(src, pickingRefForNodeId);
+            return;
+          }
+        }
+      }
       if (e.ctrlKey && e.button === 0) {
         e.preventDefault();
         const item = items.find(i => i.id === id);
@@ -722,7 +748,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           setIsDragging(true); 
           setDragStart({ x: e.clientX, y: e.clientY }); 
       }
-  }, [topZ, items, selectedIds, activeItemId, handleImageClickForChat, recordHistory]);
+  }, [topZ, items, selectedIds, activeItemId, handleImageClickForChat, recordHistory, isCanvasPicking, pickingRefForNodeId, addFromCanvas]);
 
   const addGeneratorNode = () => {
       recordHistory(); const id = Math.random().toString(36).substr(2, 9);
@@ -1072,7 +1098,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
   const renderImageNode = (item: ImageItem) => {
       const isActive = activeItemId === item.id || selectedIds.has(item.id); const currentEntry = item.history[item.historyIndex];
       return (
-      <div className="relative group w-full h-full select-none" onDoubleClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }}>
+      <div className={`relative group w-full h-full select-none ${isCanvasPicking ? 'cursor-pointer ring-4 ring-blue-500 ring-offset-4' : ''}`} onDoubleClick={(e) => { e.stopPropagation(); setEditingImage({ id: item.id, src: item.src, originalSrc: item.history[0]?.src || item.src }); }}>
           {currentEntry?.prompt && renderPromptFloat(currentEntry.prompt, currentEntry.steps, currentEntry.cfg, undefined, item.id)}
           <div className="w-full h-full rounded-[48px] shadow-glass transition-all duration-1000 bg-white overflow-hidden relative border border-slate-100/30">
               {(item.isRegenerating || item.isUpscaling) && <div className="absolute inset-0 bg-white/95 backdrop-blur-xl z-40 flex flex-col items-center justify-center"><div className="w-10 h-10 border-2 border-slate-100 border-t-blue-500 rounded-full animate-spin mb-4"></div><span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">{item.isRegenerating ? 'Redrawing' : `Optimizing ${Math.round(item.upscaleProgress || 0)}%`}</span></div>}
@@ -1111,6 +1137,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       const displayCfg = isInput ? item.data.cfg : currentEntry?.cfg;
       const displayModel = isInput ? item.data.model : currentEntry?.model;
       const isNanoModel = item.data.model.startsWith('nano-banana');
+
       const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
           const files = Array.from(e.target.files) as File[];
@@ -1123,20 +1150,15 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
             reader.readAsDataURL(file);
           });
         }
+        setPickingRefForNodeId(null);
       };
+
       const removeRefImage = (idx: number, e: MouseEvent) => {
         e.stopPropagation();
         const currentRefs = item.data.referenceImages || [];
         updateItemData(item.id, { referenceImages: currentRefs.filter((_, i) => i !== idx) });
       };
-      const addFromCanvas = (src: string) => {
-        const currentRefs = item.data.referenceImages || [];
-        if (currentRefs.length < 9 && !currentRefs.includes(src)) {
-            updateItemData(item.id, { referenceImages: [...currentRefs, src] });
-            showNotification("Asset linked from canvas", "success");
-        }
-        setPickingRefForNodeId(null);
-      };
+
       return (
         <div className="relative group w-full h-full flex flex-col transition-all duration-300" onMouseDown={e => { if ((e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') e.stopPropagation(); }}>
             {displayPrompt && renderPromptFloat(displayPrompt, displaySteps, displayCfg, displayModel, item.id)}
@@ -1195,27 +1217,31 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                              ))}
                              {(item.data.referenceImages || []).length < 9 && (
                                 <div className="relative picker-container">
-                                    <button className={`w-16 h-16 rounded-2xl border-2 border-dashed flex items-center justify-center transition-all hover:scale-115 active:scale-95 ${pickingRefForNodeId === item.id ? 'bg-blue-50 border-blue-400 text-blue-500 shadow-inner' : 'bg-white/40 border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400'}`} onClick={(e) => { e.stopPropagation(); setPickingRefForNodeId(pickingRefForNodeId === item.id ? null : item.id); }}>
+                                    <button className={`w-16 h-16 rounded-2xl border-2 border-dashed flex items-center justify-center transition-all hover:scale-115 active:scale-95 ${pickingRefForNodeId === item.id ? 'bg-blue-50 border-blue-400 text-blue-500 shadow-inner' : 'bg-white/40 border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400'}`} onClick={(e) => { e.stopPropagation(); setPickingRefForNodeId(pickingRefForNodeId === item.id ? null : item.id); setIsCanvasPicking(false); }}>
                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14"/></svg>
                                     </button>
-                                    {pickingRefForNodeId === item.id && (
-                                      <div className="absolute bottom-full left-0 mb-5 bg-white/90 backdrop-blur-3xl rounded-[32px] shadow-2xl border border-white p-6 z-[70] w-80 animate-slide-up origin-bottom-left" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-                                          <div className="flex items-center justify-between mb-5 px-1">
-                                             <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Context Hub</span>
-                                             <button onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()} className="text-[9px] font-black text-blue-500 uppercase tracking-widest hover:text-blue-600 transition-all">Upload File</button>
-                                          </div>
-                                          <div className="grid grid-cols-3 gap-3.5 max-h-[260px] overflow-y-auto no-scrollbar picker-grid">
-                                              {items.filter(i => (i.type === 'image' || (i.type === 'generator' && i.data.resultImage))).map((asset) => {
-                                                  const src = asset.type === 'image' ? (asset as ImageItem).src : (asset as GeneratorItem).data.resultImage!;
-                                                  return (
-                                                    <button key={asset.id} className="aspect-square rounded-2xl overflow-hidden border border-slate-100 hover:border-blue-400 hover:scale-[1.08] transition-all shadow-soft" onClick={() => addFromCanvas(src)}>
-                                                      <img src={src} className="w-full h-full object-cover" />
-                                                    </button>
-                                                  );
-                                              })}
-                                              {items.filter(i => (i.type === 'image' || (i.type === 'generator' && i.data.resultImage))).length === 0 && (
-                                                <div className="col-span-3 py-10 text-center"><p className="text-[10px] font-bold text-slate-300 uppercase leading-relaxed tracking-wider">Empty session assets</p></div>
-                                              )}
+                                    {pickingRefForNodeId === item.id && !isCanvasPicking && (
+                                      <div className="absolute bottom-full left-0 mb-5 bg-white/95 backdrop-blur-3xl rounded-[28px] shadow-2xl border border-slate-100/50 z-[70] min-w-[240px] animate-slide-up origin-bottom-left overflow-hidden" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+                                          <div className="flex flex-col p-1.5">
+                                              <button 
+                                                onClick={() => (document.getElementById(`ref-upload-${item.id}`) as HTMLInputElement)?.click()}
+                                                className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 rounded-2xl transition-all group/item text-left"
+                                              >
+                                                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover/item:text-slate-950 transition-colors">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8.5 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 19l4.5-8 4.47 4L21 19H5z" /><path d="M12 8v4M10 10h4" /></svg>
+                                                  </div>
+                                                  <span className="text-[13px] font-bold text-slate-700 group-hover/item:text-slate-950 tracking-tight">从本地上传图片</span>
+                                              </button>
+                                              <div className="h-px bg-slate-100/50 mx-4" />
+                                              <button 
+                                                onClick={() => setIsCanvasPicking(true)}
+                                                className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 rounded-2xl transition-all group/item text-left"
+                                              >
+                                                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover/item:text-slate-950 transition-colors">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m15 15 3 3-3 3" /><path d="M18 18h-6" /></svg>
+                                                  </div>
+                                                  <span className="text-[13px] font-bold text-slate-700 group-hover/item:text-slate-950 tracking-tight">从画布选择</span>
+                                              </button>
                                           </div>
                                           <input type="file" id={`ref-upload-${item.id}`} className="hidden" accept="image/*" multiple onChange={handleRefUpload} />
                                       </div>
@@ -1234,7 +1260,7 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full h-full relative group/image bg-white overflow-hidden" onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc: item.history[0]?.src || item.data.resultImage }); }}>
+                    <div className={`w-full h-full relative group/image bg-white overflow-hidden ${isCanvasPicking ? 'cursor-pointer ring-4 ring-blue-500 ring-offset-4' : ''}`} onDoubleClick={(e) => { e.stopPropagation(); if(item.data.resultImage) setEditingImage({ id: item.id, src: item.data.resultImage, originalSrc: item.history[0]?.src || item.data.resultImage }); }}>
                         {item.history.length > 1 && (
                             <div className="absolute top-8 left-8 flex gap-3 z-40 max-w-[85%] overflow-x-auto no-scrollbar p-1" onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
                                 {item.history.map((hist, idx) => (
@@ -1268,10 +1294,10 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       case 'editor': return renderEditNode(item as EditorItem);
       default: return null;
     }
-  }, [items, selectedIds, activeItemId, topZ, view, serverUrl, activeSizeMenuId, pickingRefForNodeId]);
+  }, [items, selectedIds, activeItemId, topZ, view, serverUrl, activeSizeMenuId, pickingRefForNodeId, isCanvasPicking, handleItemMouseDown]);
 
   return (
-    <div className={`h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-950 selection:text-white ${isDragging && dragMode === 'canvas' ? 'cursor-grabbing' : ''}`}>
+    <div className={`h-full w-full relative overflow-hidden flex font-sans selection:bg-slate-950 selection:text-white ${isDragging && dragMode === 'canvas' ? 'cursor-grabbing' : ''} ${isCanvasPicking ? 'picking-mode' : ''}`}>
       <style>{`
           @keyframes flowAnimation { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
           .animate-flow { animation: flowAnimation 0.8s linear infinite; will-change: stroke-dashoffset; }
@@ -1286,6 +1312,13 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               outline: 2px solid #3b82f6 !important;
               outline-offset: 4px;
               box-shadow: 0 0 60px rgba(59, 130, 246, 0.15) !important;
+          }
+          .picking-mode div[style*="left"] {
+              cursor: crosshair !important;
+          }
+          .picking-mode .selection-active {
+              outline: 3px solid #3b82f6 !important;
+              box-shadow: 0 0 0 1000px rgba(59, 130, 246, 0.05) !important;
           }
           .selection-box {
               background: rgba(59, 130, 246, 0.03);
@@ -1312,6 +1345,16 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
               <span className="block text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1.5">System Protocol</span>
               <p className={`text-[13px] font-bold leading-tight tracking-tight ${notification.type === 'error' ? 'text-rose-600' : 'text-slate-950'}`}>{notification.message}</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isCanvasPicking && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[1000] animate-slide-down pointer-events-none">
+          <div className="bg-slate-950 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-5 border border-white/10">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_#3b82f6]" />
+            <span className="text-[11px] font-black uppercase tracking-[0.4em]">Selection Active: Click workspace item</span>
+            <button onClick={() => { setIsCanvasPicking(false); setPickingRefForNodeId(null); }} className="pointer-events-auto ml-4 bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all">Cancel</button>
           </div>
         </div>
       )}
