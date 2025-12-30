@@ -588,8 +588,19 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
       setActiveSizeMenuId(null); 
       if (!isCanvasPicking) setPickingRefForNodeId(null);
     }
-    if ((e.target as HTMLElement).closest('input, textarea, button, label')) return;
+    
     const isCanvasBg = e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-bg');
+    
+    // Pick mode logic: clicking blank canvas cancels picking
+    if (isCanvasPicking && isCanvasBg) {
+      setIsCanvasPicking(false);
+      setPickingRefForNodeId(null);
+      showNotification("Asset selection cancelled", "info");
+      return;
+    }
+
+    if ((e.target as HTMLElement).closest('input, textarea, button, label')) return;
+    
     if (isCanvasBg) {
         if (isSpacePressed || e.button === 1) { 
             setDragMode('canvas'); 
@@ -1322,7 +1333,20 @@ const InfiniteCanvasTab: React.FC<InfiniteCanvasTabProps> = ({ serverUrl, setSer
           }
           .picking-mode .selection-active {
               outline: 3px solid #3b82f6 !important;
-              box-shadow: 0 0 0 1000px rgba(59, 130, 246, 0.05) !important;
+              box-shadow: 0 0 0 20000px rgba(59, 130, 246, 0.08) !important;
+          }
+          .picking-mode::after {
+              content: '';
+              position: fixed;
+              inset: 0;
+              background: radial-gradient(circle at center, transparent 0%, rgba(59, 130, 246, 0.04) 100%);
+              pointer-events: none;
+              z-index: 45;
+              animation: pulse-picking 4s ease-in-out infinite;
+          }
+          @keyframes pulse-picking {
+              0%, 100% { opacity: 0.3; }
+              50% { opacity: 0.8; }
           }
           .selection-box {
               background: rgba(59, 130, 246, 0.03);
